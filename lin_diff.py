@@ -29,11 +29,14 @@ class LinearDiffusion(nn.Module):
         self.gx = self.gy = self.g
 
     def A(self):
+        # Atraight-through estimator for the binary mask A.
         a = self.a
         A = (a > 0).float()
         return A.detach() + a - a.detach()
     
     def forward(self, x, t):
+        # Surprisingly, this is almost never used, as training and sampling are done differently.
+        # For the final main mehods of the class see self.sample and self.train_model.
         gx = self.g(x)
         At_gx = self.A * gx / self.conf.sqrt_bar_alpha[t]
         return self.g.inverse(At_gx)
@@ -91,8 +94,10 @@ class LinearDiffusion(nn.Module):
             running_loss_img = 0.0
             running_loss_eps = 0.0
             num_batches = len(train_loader)
-            for batch_idx, (img, eps) in enumerate(train_loader):
-                img, eps = img.to(device), eps.to(device)
+            for batch_idx, img in enumerate(train_loader):
+                img = img.to(device)
+                # Generate a batch of noise matching the shape of the images.
+                eps = torch.randn_like(img, device=device)
                 loss, loss_img, loss_eps = self.train_step(img, eps)
                 running_loss += loss
                 running_loss_img += loss_img
@@ -109,24 +114,22 @@ class LinearDiffusion(nn.Module):
             print(f"[Train] Epoch {epoch+1} completed: Avg Loss: {avg_loss:.4f} "
                   f"(img: {avg_loss_img:.4f}, eps: {avg_loss_eps:.4f})")
             
-            if val_loader is not None:
-                self.valid(val_loader, epoch+1)
-    
-    def valid(self, val_loader, epoch):
-        """Validation on one batch; also calls test_model_properties."""
-        from models import test_model_properties  # Call at every validation.
+            # Validation: generate samples and save grid.
+            if (batch_idx + 1) % self.conf.val_freq == 0:
+                self.valid(epoch+1)
+
+    def valid(self, epoch):
+        """Validation: Generate samples using the sample method and save a grid of generated images."""
+        from models import test_model_properties  # Call model property tests.
         self.eval()
-        # Test model properties.
         test_model_properties(self)
-        batch = next(iter(val_loader))
-        img, eps = batch
-        img, eps = img.to(self.conf.device), eps.to(self.conf.device)
-        loss, loss_img, loss_eps = self.get_losses(img, eps)
-        print(f"[Validation] Epoch {epoch} Loss: {loss.item():.4f} "
-              f"(img: {loss_img.item():.4f}, eps: {loss_eps.item():.4f})")
-        grid = make_grid(img, nrow=int(img.size(0) ** 0.5))
-        grid_save_path = os.path.join(self.conf.grid_dir, f"grid_epoch_{epoch}_{datetime_now()}.png")
+        # Determine the number of samples to generate (default to 16 if not specified in conf)
+        sample_bs = getattr(self.conf, "val_sample_bs", 16)
+        generated = self.sample(b_sz=sample_bs, nograd=True)
+        grid = make_grid(generated, nrow=int(sample_bs ** 0.5))
+        grid_save_path = os.path.join(self.conf.grid_dir, f"sample_grid_epoch_{epoch}_{datetime_now()}.png")
         imsave(grid, grid_save_path)
+        print(f"[Validation] Generated sample grid saved to {grid_save_path}")
         if self.conf.save_val_ckpt:
             self.save_checkpoint(f"checkpoint_epoch_{epoch}_{datetime_now()}.pth")
         self.train()
@@ -200,7 +203,6 @@ class LinearDiffusion(nn.Module):
         else:
             ckpt_file = os.path.join(self.conf.ckpt_dir, ckpt_file)
         ckpt = torch.load(ckpt_file, map_location=self.conf.device)
-        # Adjust state dict keys for DDP if needed.
         model_has_module = any(k.startswith("module.") for k in self.state_dict().keys())
         ckpt_has_module = any(k.startswith("module.") for k in ckpt.keys())
         if model_has_module and not ckpt_has_module:

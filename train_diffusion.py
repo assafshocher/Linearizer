@@ -2,8 +2,7 @@ import os
 import argparse
 from datetime import datetime
 import torch
-import torch.distributed as dist
-from utils import handle_device, create_experiment_dirs
+from utils import handle_device, create_experiment_dirs, handle_devices
 from lin_diff import LinearDiffusion
 from data import get_data_loaders
 
@@ -64,18 +63,7 @@ def main():
     print(conf)
 
     # --- Device & DDP handling ---
-    if conf.use_ddp:
-        # DDP: assume launch with torchrun or similar so that LOCAL_RANK is set.
-        dist.init_process_group(backend="nccl")
-        local_rank = int(os.environ["LOCAL_RANK"])
-        torch.cuda.set_device(local_rank)
-        conf.device = torch.device(f"cuda:{local_rank}")
-        world_size = dist.get_world_size()
-        rank = dist.get_rank()
-    else:
-        conf.device = handle_device(conf.device)
-        world_size = 1
-        rank = 0
+    conf.use_ddp, conf.device, world_size, rank = handle_devices(conf.device)
     
     # --- Experiment folder handling ---
     # Create an experiment folder with dataset, current date, and exp_name.
@@ -111,6 +99,7 @@ def main():
     print(f"Training complete. Model saved as '{final_ckpt_path}'.")
 
     if conf.use_ddp:
+        import torch.distributed as dist
         dist.destroy_process_group()
 
 

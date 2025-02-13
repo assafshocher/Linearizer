@@ -50,14 +50,30 @@ def find_latest_checkpoint(folder_path, exp_name=""):
     files = sorted(files, key=lambda f: os.path.getmtime(os.path.join(folder_path, f)))
     return files[-1]
 
-def handle_device(device):
-    try:
-        device = torch.device(device)
-        if device.type == 'cuda' and not torch.cuda.is_available():
-            raise ValueError("CUDA is not available but a CUDA device was specified.")
-    except Exception as e:
-        raise ValueError(f"Invalid device specified: {device}") from e
-    return device
+
+def handle_devices(device):
+    if device == "ddp":
+        use_ddp = True
+        import torch.distributed as dist
+        # DDP: assume launch with torchrun or similar so that LOCAL_RANK is set.
+        dist.init_process_group(backend="nccl")
+        local_rank = int(os.environ["LOCAL_RANK"])
+        torch.cuda.set_device(local_rank)
+        device = torch.device(f"cuda:{local_rank}")
+        world_size = dist.get_world_size()
+        rank = dist.get_rank()
+    else:
+        try:
+            device = torch.device(device)
+            if device.type == 'cuda' and not torch.cuda.is_available():
+                raise ValueError("CUDA is not available but a CUDA device was specified.")
+        except Exception as e:
+            raise ValueError(f"Invalid device specified: {device}") from e
+        world_size = 1
+        rank = 0
+    return use_ddp, device, world_size, rank
+
+
 
 def create_experiment_dirs(results_dir, dataset, exp_name=""):
     """
