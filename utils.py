@@ -1,6 +1,5 @@
 import os
 import torch
-import re
 from datetime import datetime
 
 def imread(fname, bounds=(-1, 1), **kwargs):
@@ -20,7 +19,7 @@ def imwrite(image, fname, bounds=(-1, 1), **kwargs):
     vmin, vmax = bounds
     image = (image - vmin) / (vmax - vmin)
     image = (image * 255.0).round().clip(0, 255).to(torch.uint8)
-    Image.fromarray(image[0].permute(1,2,0).cpu().numpy(), 'RGB').save(fname)
+    Image.fromarray(image.permute(1,2,0).cpu().numpy(), 'RGB').save(fname)
 
 def imshow(x, bounds=(0, 1)):
     import matplotlib.pyplot as plt
@@ -71,6 +70,7 @@ def handle_devices(device):
             raise ValueError(f"Invalid device specified: {device}") from e
         world_size = 1
         rank = 0
+        use_ddp = False
     return use_ddp, device, world_size, rank
 
 
@@ -80,13 +80,16 @@ def create_experiment_dirs(results_dir, dataset, exp_name=""):
     Creates an experiment folder inside results_dir with a name based on the dataset,
     current date, and optional exp_name. Returns (exp_dir, ckpt_dir, grid_dir).
     """
-    date_str = datetime.now().strftime("%Y%m%d")
+    date_str = datetime.now().strftime("%Y%m%d_%H%M%S")
     base_name = f"{dataset}_{date_str}"
     if exp_name:
         base_name += f"_{exp_name}"
     exp_dir = os.path.join(results_dir, base_name)
     ckpt_dir = os.path.join(exp_dir, "ckpts")
-    grid_dir = os.path.join(exp_dir, "grids")
+    grid_dir = os.path.join(exp_dir, "generated")
     os.makedirs(ckpt_dir, exist_ok=True)
     os.makedirs(grid_dir, exist_ok=True)
     return exp_dir, ckpt_dir, grid_dir
+
+
+

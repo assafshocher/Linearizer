@@ -2,7 +2,7 @@ import os
 import argparse
 from datetime import datetime
 import torch
-from utils import handle_device, create_experiment_dirs, handle_devices
+from utils import create_experiment_dirs, handle_devices
 from lin_diff import LinearDiffusion
 from data import get_data_loaders
 
@@ -20,7 +20,6 @@ def main():
     parser.add_argument("--save_val_ckpt", action="store_true", default=False,
                         help="Save a checkpoint after validation.")
     parser.add_argument("--lr", type=float, default=0.001, help="Initial learning rate.")
-    parser.add_argument("--momentum", type=float, default=0.9, help="Momentum (for SGD).")
     parser.add_argument("--weight_decay", type=float, default=1e-4, help="Weight decay (L2 penalty).")
     parser.add_argument("--use_ddp", action="store_true", default=False,
                         help="Use DistributedDataParallel (DDP).")
@@ -36,22 +35,22 @@ def main():
                         help="Dataset to use. Options: mnist, cifar10, cifar100, imagenet, celeba")
     parser.add_argument("--orig_im_size", type=int, default=28,
                         help="Original image size (used for augmentations). For MNIST, default=28.")
-    parser.add_argument("--target_im_size", type=int, default=32,
+    parser.add_argument("--target_im_size", type=int, default=64,
                         help="Target image size (used for training). For MNIST, default=32.")
     
     # Model-specific arguments.
-    parser.add_argument("--n_layers", type=int, default=6, help="Number of layers in g.")
-    parser.add_argument("--n_heads", type=int, default=8, help="Number of heads in g.")
+    parser.add_argument("--n_layers", type=int, default=5, help="Number of layers in g.")
+    parser.add_argument("--n_heads", type=int, default=4, help="Number of heads in g.")
     parser.add_argument("--p_sz", type=int, default=8, help="Patch size for g.")
-    parser.add_argument("--im_shape", type=int, nargs=3, default=[1, 32, 32],
+    parser.add_argument("--im_shape", type=int, nargs=3, default=[1, 64, 64],
                         help="Image shape as C H W for the model (target size).")
     
     # Diffusion process arguments.
-    parser.add_argument("--T", type=int, default=10, help="Number of timesteps for the diffusion process.")
+    parser.add_argument("--T", type=int, default=100, help="Number of timesteps for the diffusion process.")
     parser.add_argument("--flow_type", type=str, default="DDPM", help="Flow type (e.g., DDPM, DDIM).")
     parser.add_argument("--betas", type=float, nargs='*', default=None, help="Optional beta schedule (list of floats).")
-    parser.add_argument("--beta_min", type=float, default=0.1, help="Minimum beta for default schedule.")
-    parser.add_argument("--beta_max", type=float, default=20.0, help="Maximum beta for default schedule.")
+    parser.add_argument("--beta_min", type=float, default=1e-4, help="Minimum beta for default schedule.")
+    parser.add_argument("--beta_max", type=float, default=0.02, help="Maximum beta for default schedule.")
     parser.add_argument("--img_w", type=float, default=1.0, help="Weight for image loss.")
     parser.add_argument("--eps_w", type=float, default=1.0, help="Weight for epsilon loss.")
     
@@ -82,6 +81,7 @@ def main():
                                use_ddp=conf.use_ddp,
                                world_size=world_size,
                                rank=rank)
+    
 
     # --- Initialize the model ---
     model = LinearDiffusion(conf).to(conf.device)
