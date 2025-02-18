@@ -47,11 +47,11 @@ def main():
                         help="Image shape as C H W for the model (target size).")
     
     # Diffusion process arguments.
-    parser.add_argument("--T", type=int, default=10, help="Number of timesteps for the diffusion process.")
+    parser.add_argument("--T", type=int, default=100, help="Number of timesteps for the diffusion process.")
     parser.add_argument("--flow_type", type=str, default="DDPM", help="Flow type (e.g., DDPM, DDIM).")
     parser.add_argument("--betas", type=float, nargs='*', default=None, help="Optional beta schedule (list of floats).")
-    parser.add_argument("--beta_min", type=float, default=0.1, help="Minimum beta for default schedule.")
-    parser.add_argument("--beta_max", type=float, default=20.0, help="Maximum beta for default schedule.")
+    parser.add_argument("--beta_min", type=float, default=1e-4, help="Minimum beta for default schedule.")
+    parser.add_argument("--beta_max", type=float, default=0.02, help="Maximum beta for default schedule.")
     parser.add_argument("--img_w", type=float, default=1.0, help="Weight for image loss.")
     parser.add_argument("--eps_w", type=float, default=1.0, help="Weight for epsilon loss.")
     
