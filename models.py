@@ -59,9 +59,9 @@ class InvertiblePermutation(nn.Module):
 
 
 class InvTransformerNet(nn.Module):
-    def __init__(self, num_heads, num_layers, patch_sz, im_sz):
+    def __init__(self, num_heads, num_layers, patch_sz, im_sz, rgb=True):
         super().__init__()
-        dim = 3*patch_sz**2
+        dim = 3*patch_sz**2 if rgb else patch_sz**2
         self.blocks = nn.ModuleList([InvTransformerBlock(dim//2, num_heads) for _ in range(num_layers)])
         self.p = nn.ModuleList([InvertiblePermutation(dim, axis=2) for _ in range(num_layers)])
         self.unfold = nn.Unfold(kernel_size=patch_sz, stride=patch_sz)
@@ -74,9 +74,11 @@ class InvTransformerNet(nn.Module):
             X_1, X_2 = X.chunk(2, -1)
             X_1, X_2 = block(X_1, X_2)
             X = torch.cat([X_1, X_2], dim=-1)
+        X = self.fold(X.permute(0,2,1))
         return X
 
     def inverse(self, Y):
+        Y = self.unfold(Y).permute(0,2,1)
         for block, p in zip(reversed(self.blocks), reversed(self.p)):
             Y_1, Y_2 = Y.chunk(2, dim=-1)
             Y_1, Y_2 = block.inverse(Y_1, Y_2)
@@ -115,19 +117,19 @@ class MLPSubblock(nn.Module):
             nn.Linear(dim * mlp_ratio, dim, bias=False))
 
     def forward(self, x):
-        return self.norm2(self.mlp(self.norm1(x))) * 0.1
+        return self.norm2(self.mlp(self.norm1(x)))
         # return self.mlp(self.norm1(x))
 
 
 
 class AttentionSubBlock(nn.Module):
-    def __init__(self, dim, num_heads, expand_ratio=1):
+    def __init__(self, dim, num_heads, expand_ratio=3):
         super().__init__()
         self.norm1 = nn.LayerNorm(dim * expand_ratio, eps=1e-6, elementwise_affine=False)
         self.norm2 = nn.LayerNorm(dim, eps=1e-6, elementwise_affine=False)
         self.attn = MHA(dim * expand_ratio, num_heads, batch_first=True, bias=True)
-        # self.expand = nn.Linear(dim, dim * expand_ratio, bias=False)
-        # self.shrink = nn.Linear(dim * expand_ratio, dim, bias=False)
+        self.expand = nn.Linear(dim, dim * expand_ratio, bias=False)
+        self.shrink = nn.Linear(dim * expand_ratio, dim, bias=False)
         self.v_start = dim * 2
         self.s = expand_ratio ** (-0.5)
         # Orthogonal initialization for in_proj_weight (Q, K, V)
@@ -151,34 +153,39 @@ class AttentionSubBlock(nn.Module):
         with torch.no_grad():
             self.attn.in_proj_bias[self.v_start:].zero_()
             self.attn.out_proj.bias.zero_()
-        # x = self.expand(x)
+        x = self.expand(x)
         x = self.norm1(x)
+
         x, _ = self.attn(x, x, x)
-        # x = self.shrink(x)
+        x = self.shrink(x)
         x = self.norm2(x)
-        return x*0.1
+        return x
 
 
-def test_model_properties(model, bsz=64):
+def test_model_properties(model, bsz=64, test_y=False):
     device = next(model.parameters()).device
-    im_sz_x, patch_sz_x, dim_y = model.sizes 
-    dim_x = 3 * patch_sz_x ** 2
-    n_tokens_x = (im_sz_x // patch_sz_x) ** 2
-    x1, x2 = torch.randn(2*bsz, 3, im_sz_x, im_sz_x, device=device).chunk(2, dim=0)
-    a1, a2 = torch.randn(2*bsz, 1, 1, device=device).chunk(2, dim=0)
+    im_sz_x = model.conf.im_shape[-1]
+    n_inp_chans = 3 if model.rgb else 1
+    x1, x2 = torch.randn(2*bsz, n_inp_chans, im_sz_x, im_sz_x, device=device).chunk(2, dim=0)
+    a1, a2 = torch.randn(2*bsz, 1, 1, 1, device=device).chunk(2, dim=0)
     x = x1
-    zx = torch.randn(bsz, n_tokens_x, dim_x, device=device)
-    y = torch.randn(bsz, 100, device=device)
-    zy = torch.randn(bsz, dim_y, device=device)
+    zx = torch.randn_like(x)
+    if test_y:
+        dim_y = model.dim_y
+        y = torch.randn(bsz, 100, device=device)
+        zy = torch.randn(bsz, dim_y, device=device)
+    else:
+        y = zy = None
+    
 
-    invertability_test(x, zx, y, zy, model)
+    invertability_test(x, zx, y, zy, model, test_y)
     linearity_test(x1, x2, a1, a2, model)
-    unitarity_test(x, y, model)
+    unitarity_test(x, y, model, test_y)
 
 
 
 @torch.no_grad()
-def invertability_test(x, zx, y, zy, model, thr=1e-2):
+def invertability_test(x, zx, y, zy, model, test_y, thr=1e-2):
     # X->Z->X
     zx_ = model.gx(x)
     x_ = model.gx.inverse(zx_)
@@ -191,19 +198,22 @@ def invertability_test(x, zx, y, zy, model, thr=1e-2):
     zxz = torch.norm(zx - zx_).item()
     zxz_ok = zxz < thr
 
-    # Y->Z->Y
-    zy_ = model.gy(y)
-    y_ = model.gy.inverse(zy_)
-    yzy = torch.norm(y - y_).item()
-    yzy_ok = yzy < 1e-2
+    if test_y:
+        # Y->Z->Y
+        zy_ = model.gy(y)
+        y_ = model.gy.inverse(zy_)
+        yzy = torch.norm(y - y_).item()
+        yzy_ok = yzy < 1e-2
 
-    # Z->Y->Z
-    y_ = model.gy.inverse(zy)
-    zy_ = model.gy(y_)
-    zyz = torch.norm(zy - zy_).item()
-    zyz_ok = zyz < thr
+        # Z->Y->Z
+        y_ = model.gy.inverse(zy)
+        zy_ = model.gy(y_)
+        zyz = torch.norm(zy - zy_).item()
+        zyz_ok = zyz < thr
 
-    print(f"X->Z->X: {xzx_ok} ({xzx})\nZ->X->Z: {zxz_ok} ({zxz})\nY->Z->Y: {yzy_ok} ({yzy})\nZ->Y->Z: {zyz_ok} ({zyz})")
+    print(f"X->Z->X: {xzx_ok} ({xzx})\nZ->X->Z: {zxz_ok} ({zxz})")
+    if test_y:
+        print(f"Y->Z->Y: {yzy_ok} ({yzy})\nZ->Y->Z: {zyz_ok} ({zyz})")
 
 
 @torch.no_grad()
@@ -212,12 +222,13 @@ def linearity_test(x1, x2, a1, a2, model, thr=1e-4):
     zx1, zx2 = model.gx(x1), model.gx(x2)
     zx_superpos = a1*zx1 + a2*zx2
     x_superpos = model.gx.inverse(zx_superpos)
-    f_superpos_x = model(x_superpos, interp=False)
+    t = torch.randint(0, model.conf.T, (x1.size(0),), device=x1.device)
+    f_superpos_x = model(x_superpos, t)
 
     # a1f(x1)+a2f(x2)
-    y1, y2 = model(x1, interp=False), model(x2, interp=False)
+    y1, y2 = model(x1, t), model(x2, t)
     zy1, zy2 = model.gy(y1), model.gy(y2)
-    zy_superpos = a1[:,:,0]*zy1 + a2[:,:,0]*zy2
+    zy_superpos = a1*zy1 + a2*zy2
     superpos_f_x = model.gy.inverse(zy_superpos)
 
     linearity_dist = (f_superpos_x - superpos_f_x).abs().mean()
@@ -234,14 +245,17 @@ def linearity_test(x1, x2, a1, a2, model, thr=1e-4):
 
 
 @torch.no_grad()
-def unitarity_test(x, y, model, thr=10):
+def unitarity_test(x, y, model, test_y, thr=10):
     zx = model.gx(x)
     ratio_x = (zx/x.view_as(zx)).abs().mean()
     ratio_x_ok = ratio_x < thr
 
-    zy = model.gy(y)
-    ratio_y = (zy/y.view_as(zy)).abs().mean()
-    ratio_y_ok = ratio_y < thr
+    if test_y:
+        zy = model.gy(y)
+        ratio_y = (zy/y.view_as(zy)).abs().mean()
+        ratio_y_ok = ratio_y < thr
 
-    print(f"Unitarity test: X:{ratio_x_ok} ({ratio_x.item()}),   Y:{ratio_y_ok} ({ratio_y.item()})")
+    print(f"Unitarity test: X:{ratio_x_ok} ({ratio_x.item()})")
+    if test_y:
+        print(f"Unitarity test: Y:{ratio_y_ok} ({ratio_y.item()})")
 

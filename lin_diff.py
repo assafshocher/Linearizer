@@ -4,7 +4,7 @@ import torch.nn as nn
 import torch.optim as optim
 from models import InvTransformerNet
 from torchvision.utils import make_grid
-from utils import imsave, find_latest_checkpoint
+from utils import imwrite, find_latest_checkpoint
 
 
 class LinearDiffusion(nn.Module):
@@ -15,9 +15,10 @@ class LinearDiffusion(nn.Module):
         if not isinstance(self.conf.im_shape, tuple):
             self.conf.im_shape = tuple(self.conf.im_shape)
         im_sz = self.conf.im_shape[-3] * self.conf.im_shape[-2] * self.conf.im_shape[-1]
-        
+        self.rgb = (self.conf.im_shape[-3] == 3 )
+    
         if g is None:
-            self.g = InvTransformerNet(conf.n_heads, conf.n_layers, conf.p_sz, im_sz)
+            self.g = InvTransformerNet(conf.n_heads, conf.n_layers, conf.p_sz, self.conf.im_shape[-1], self.rgb)
         else:
             self.g = g
         self.a = nn.Parameter(torch.randn(im_sz))
@@ -28,18 +29,20 @@ class LinearDiffusion(nn.Module):
         # For model testing properties.
         self.gx = self.gy = self.g
 
+
     def A(self):
         # Atraight-through estimator for the binary mask A.
         a = self.a
         A = (a > 0).float()
-        return A.detach() + a - a.detach()
+        A = A.detach() + a - a.detach()
+        return A[None, :]
     
     def forward(self, x, t):
         # Surprisingly, this is almost never used, as training and sampling are done differently.
         # For the final main mehods of the class see self.sample and self.train_model.
         gx = self.g(x)
-        At_gx = self.A * gx / self.conf.sqrt_bar_alpha[t]
-        return self.g.inverse(At_gx)
+        At_gx = self.A() * gx.view(gx.shape[0], -1) / self.sqrt_bar_alpha[t][:, None]
+        return self.g.inverse(At_gx.view_as(gx))
     
     def get_losses(self, img=None, eps=None):
         if img is None and eps is None:
@@ -47,14 +50,12 @@ class LinearDiffusion(nn.Module):
         img = torch.zeros((0, *img.shape[1:]), device=img.device) if img is None else img
         eps = torch.zeros((0, *eps.shape[1:]), device=eps.device) if eps is None else eps
         
-        # Flatten and concatenate.
-        combined = torch.cat((img.view(-1), eps.view(-1)), dim=0)
-        g_out = self.g(combined)
-        # Split the output into two parts.
-        g_img, g_eps = torch.split(g_out, img.numel())
+        # apply g to both img and eps
+        g_out = self.g(torch.cat((img, eps), dim=0))
+        g_img, g_eps = torch.split(g_out, (img.shape[0], eps.shape[0]))
         
-        loss_img = ((1 - self.A) * g_img).mean()
-        loss_eps = (self.A * g_eps).mean()
+        loss_img = ((1 - self.A()) * g_img.view(img.shape[0], -1)).pow(2).mean()
+        loss_eps = (self.A() * g_eps.view(eps.shape[0], -1)).pow(2).mean()
         loss = self.conf.img_w * loss_img + self.conf.eps_w * loss_eps
 
         return loss, loss_img, loss_eps
@@ -62,14 +63,12 @@ class LinearDiffusion(nn.Module):
     def sample(self, b_sz=1, nograd=True):
         with torch.no_grad() if nograd else torch.enable_grad():
             T = self.conf.T
-            A = self.A.bool()
-            eps = torch.randn(b_sz, T+1, *self.conf.im_shape, device=self.a.device)
-            g_eps = self.g(eps).view(b_sz, -1, 1)
-            P, Q, Sigma = self.conf.P, self.conf.Q, self.conf.Sigma
-            if not (P.shape[0] == Q.shape[0] == Sigma.shape[0]):
-                raise ValueError("P, Q and Sigma must have the same length.")
+            A = self.A()[0].bool()
+            eps = torch.randn(b_sz*(T+1), *self.conf.im_shape, device=self.a.device)
+            g_eps = self.g(eps).view(b_sz, -1, T+1)
+            P, Q, Sigma = self.P, self.Q, self.Sigma
             g_x0 = ((P * Sigma).view(1, 1, -1) * g_eps).sum(-1)
-            g_x0[A] += ((Q[A] * Sigma[A]).view(1, 1, -1) * g_eps[A]).sum(-1)
+            g_x0[:, A] += ((Q * Sigma).view(1, 1, -1) * g_eps[:, A, :]).sum(-1)
             g_x0 = g_x0.view(b_sz, *self.conf.im_shape)
             self.eval()
             x_0 = self.g.inverse(g_x0)
@@ -81,7 +80,6 @@ class LinearDiffusion(nn.Module):
         self.opt.zero_grad()
         loss.backward()
         self.opt.step()
-        self.sched.step()
         return loss.item(), loss_img.item(), loss_eps.item()
     
     def train_model(self, train_loader, n_epochs, val_loader=None):
@@ -95,9 +93,9 @@ class LinearDiffusion(nn.Module):
             running_loss_eps = 0.0
             num_batches = len(train_loader)
             for batch_idx, img in enumerate(train_loader):
-                img = img.to(device)
+                img = img[0].to(device)
                 # Generate a batch of noise matching the shape of the images.
-                eps = torch.randn_like(img, device=device)
+                eps = torch.randn_like(img)
                 loss, loss_img, loss_eps = self.train_step(img, eps)
                 running_loss += loss
                 running_loss_img += loss_img
@@ -118,6 +116,8 @@ class LinearDiffusion(nn.Module):
             if (batch_idx + 1) % self.conf.val_freq == 0:
                 self.valid(epoch+1)
 
+            self.sched.step()
+
     def valid(self, epoch):
         """Validation: Generate samples using the sample method and save a grid of generated images."""
         from models import test_model_properties  # Call model property tests.
@@ -127,11 +127,15 @@ class LinearDiffusion(nn.Module):
         sample_bs = getattr(self.conf, "val_sample_bs", 16)
         generated = self.sample(b_sz=sample_bs, nograd=True)
         grid = make_grid(generated, nrow=int(sample_bs ** 0.5))
-        grid_save_path = os.path.join(self.conf.grid_dir, f"sample_grid_epoch_{epoch}_{datetime_now()}.png")
-        imsave(grid, grid_save_path)
+        grid_save_path = os.path.join(self.conf.grid_dir, f"e{epoch}.png")
+        imwrite(grid, grid_save_path)
+        # we want to make a picture from self.a and save it as well
+        a_img = self.a.view(*self.conf.im_shape).repeat(3,1,1)
+        a_save_path = os.path.join(self.conf.grid_dir, f"a_e{epoch}.png")
+        imwrite(a_img, a_save_path)
         print(f"[Validation] Generated sample grid saved to {grid_save_path}")
         if self.conf.save_val_ckpt:
-            self.save_checkpoint(f"checkpoint_epoch_{epoch}_{datetime_now()}.pth")
+            self.save_checkpoint(f"e{epoch}.pth")
         self.train()
     
     def calc_and_update_p_q_sigma(self, T, flow_type):
@@ -180,16 +184,13 @@ class LinearDiffusion(nn.Module):
         P[0] = P[T]
         Q[0] = Q[T]
 
-        conf.P = P
-        conf.Q = Q
-        conf.Sigma = sigma
-        self.conf.sqrt_bar_alpha = sqrt_bar_alpha
+        self.register_buffer("P", P)
+        self.register_buffer("Q", Q)
+        self.register_buffer("Sigma", sigma)
+        self.register_buffer("sqrt_bar_alpha", sqrt_bar_alpha)
 
-    def save_checkpoint(self, filename=None):
+    def save_checkpoint(self, filename):
         from datetime import datetime
-        if filename is None:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"checkpoint_{timestamp}.pth"
         ckpt_path = os.path.join(self.conf.ckpt_dir, filename)
         torch.save(self.state_dict(), ckpt_path)
         print(f"Checkpoint saved to {ckpt_path}")
@@ -211,7 +212,3 @@ class LinearDiffusion(nn.Module):
             ckpt = {k.replace("module.", ""): v for k, v in ckpt.items()}
         self.load_state_dict(ckpt)
         print(f"Loaded checkpoint from {ckpt_file}")
-
-def datetime_now():
-    from datetime import datetime
-    return datetime.now().strftime("%Y%m%d_%H%M%S")
