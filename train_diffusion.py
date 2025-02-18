@@ -53,14 +53,17 @@ def main():
     parser.add_argument("--beta_max", type=float, default=0.02, help="Maximum beta for default schedule.")
     parser.add_argument("--img_w", type=float, default=1.0, help="Weight for image loss.")
     parser.add_argument("--eps_w", type=float, default=1.0, help="Weight for epsilon loss.")
-    
+    parser.add_argument("--wandb", type=bool, default=True)
+
     # Checkpoint loading flag.
     parser.add_argument("--load_latest", action="store_true", default=False,
                         help="If set, load the latest checkpoint for this experiment.")
 
     conf = parser.parse_args()
     print(conf)
-
+    if conf.wandb:
+        import wandb
+        wandb.init(config=conf, project="Linearizer")
     # --- Device & DDP handling ---
     conf.use_ddp, conf.device, world_size, rank = handle_devices(conf.device)
     

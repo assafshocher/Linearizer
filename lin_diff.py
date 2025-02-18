@@ -5,6 +5,7 @@ import torch.optim as optim
 from models import InvTransformerNet
 from torchvision.utils import make_grid
 from utils import imwrite, find_latest_checkpoint
+import wandb
 
 
 class LinearDiffusion(nn.Module):
@@ -28,10 +29,11 @@ class LinearDiffusion(nn.Module):
 
         # For model testing properties.
         self.gx = self.gy = self.g
+        self.log_counter = 0
 
 
     def A(self):
-        # Atraight-through estimator for the binary mask A.
+        # Straight-through estimator for the binary mask A.
         a = self.a
         A = (a > 0).float()
         A = A.detach() + a - a.detach()
@@ -39,7 +41,7 @@ class LinearDiffusion(nn.Module):
     
     def forward(self, x, t):
         # Surprisingly, this is almost never used, as training and sampling are done differently.
-        # For the final main mehods of the class see self.sample and self.train_model.
+        # For the final main methods of the class see self.sample and self.train_model.
         gx = self.g(x)
         At_gx = self.A() * gx.view(gx.shape[0], -1) / self.sqrt_bar_alpha[t][:, None]
         return self.g.inverse(At_gx.view_as(gx))
@@ -105,6 +107,12 @@ class LinearDiffusion(nn.Module):
                     current_lr = self.opt.param_groups[0]['lr']
                     print(f"[Train] Epoch [{epoch+1}/{n_epochs}] Batch [{batch_idx+1}/{num_batches}] | "
                           f"LR: {current_lr:.6f} | Loss: {loss:.4f} (img: {loss_img:.4f}, eps: {loss_eps:.4f})")
+                    if self.conf.wandb:
+                        wandb.log({'epoch': epoch, 'batch': batch_idx, 'LR': current_lr,
+                                   'loss': loss, 'loss_img': loss_img, 'loss_eps': loss_eps,
+                                   'Arank': self.A().sum().item()}, step=self.log_counter)
+                        self.log_counter += 1
+
             
             avg_loss = running_loss / num_batches
             avg_loss_img = running_loss_img / num_batches
