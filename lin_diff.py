@@ -6,6 +6,7 @@ from models import InvTransformerNet
 from torchvision.utils import make_grid
 from utils import imwrite, find_latest_checkpoint
 import wandb
+import matplotlib.pyplot as plt
 
 
 class LinearDiffusion(nn.Module):
@@ -37,7 +38,7 @@ class LinearDiffusion(nn.Module):
         a = self.a
         # A = (a > 0).float()
         # A = A.detach() + a - a.detach()
-        A = a.tanh()
+        A = (a.tanh() + 1)/2
         return A[None, :]
     
     def forward(self, x, t):
@@ -95,17 +96,25 @@ class LinearDiffusion(nn.Module):
             self.eval()
             g_x = self.g(x)
             g_epses = torch.randn(T, b_sz, *self.conf.im_shape, device=self.a.device)
+            gmin = []
             for t, g_eps in zip(range(T-2, -1, -1), g_epses):
-                print(g_x.min(), g_x.max(), g_x.abs().min())
-                print(a[t], b[t], sigma[t])
-                print(g_eps.min(), g_eps.max(), g_eps.abs().min())
-                print((a[t] + b[t] * A) )
-                import pdb; pdb.set_trace()
+                gmin.append(g_x.min().item())
+                print("g_min: ", g_x.min().item(), "g_max: ", g_x.max().item(), "g_abs_min: ", g_x.abs().min().item())
+                print("at: ", a[t].item(), "bt: ", b[t].item(), "sigma t: ", sigma[t].item())
+                print("g_eps_min: ", g_eps.min().item(), "g_eps_max: ", g_eps.max().item(), "g_eps_abs_min: ", g_eps.abs().min())
+                print("Unclear calculation: ", (a[t] + b[t] * A) )
+                # import pdb; pdb.set_trace()
                 g_x = (a[t] + b[t] * A) * g_x.view(g_x.shape[0], -1) + sigma[t] * g_eps.view(g_eps.shape[0], -1)
-                
+            if self.conf.wandb:
+                plt.plot(range(T-2, -1, -1), [a[t].item() for t in range(T-2, -1, -1)], range(T-2, -1, -1), [b[t].item() for t in range(T-2, -1, -1)])
+                plt.legend(["at", "bt"])
+                wandb.log({"at_bt": wandb.Image(plt)})
+                plt.plot(range(T-2, -1, -1), gmin)
+                wandb.log({"gmin": wandb.Image(plt)})
             x_0 = self.g.inverse(g_x.view_as(x))
-        if torch.isnan(x_0).any():
-            import pdb; pdb.set_trace()
+
+        # if torch.isnan(x_0).any():
+        #     import pdb; pdb.set_trace()
         self.train()
         return x_0
 
@@ -229,9 +238,8 @@ class LinearDiffusion(nn.Module):
             # So we slice: bar_alpha[t-1] --> bar_alpha[:-1] and beta_t, alpha_t, bar_alpha[t] --> use indices [1:]
             a = sqrt_bar_alpha[:-1] * betas[1:] / (1 - bar_alpha[1:])
             b = alphas[1:].sqrt() * (1 - bar_alpha[:-1]) / (1 - bar_alpha[1:])
+            # b = b / sqrt_bar_alpha[1:]
             sigma = torch.sqrt(betas[1:] * (1 - bar_alpha[:-1]) / (1 - bar_alpha[1:]))
-
-            b = b / sqrt_bar_alpha[1:]
             # sigma = torch.cat([torch.ones(1, device=device), sigma], dim=0)
         elif flow_type == "DDIM":
             pass

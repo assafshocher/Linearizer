@@ -90,7 +90,7 @@ def main():
 
     # --- Initialize the model ---
     model = LinearDiffusion(conf).to(conf.device)
-    print(model.sqrt_bar_alpha)
+    print("Model.sqrt_bar_alpha: ", model.sqrt_bar_alpha)
     
     # If requested, load the latest checkpoint.
     if conf.load_latest:
