@@ -35,8 +35,9 @@ class LinearDiffusion(nn.Module):
     def A(self):
         # Straight-through estimator for the binary mask A.
         a = self.a
-        A = (a > 0).float()
-        A = A.detach() + a - a.detach()
+        # A = (a > 0).float()
+        # A = A.detach() + a - a.detach()
+        A = a.tanh()
         return A[None, :]
     
     def forward(self, x, t):
@@ -63,6 +64,9 @@ class LinearDiffusion(nn.Module):
         return loss, loss_img, loss_eps
     
     def sample(self, b_sz=1, nograd=True):
+        if self.conf.sample_iterative:
+            return self.sample_iterative(b_sz, nograd)
+        
         with torch.no_grad() if nograd else torch.enable_grad():
             T = self.conf.T
             A = self.A()[0].bool()
@@ -76,6 +80,41 @@ class LinearDiffusion(nn.Module):
             x_0 = self.g.inverse(g_x0)
             self.train()
         return x_0
+    
+
+    def sample_iterative(self, b_sz=1, nograd=True):
+        with torch.no_grad() if nograd else torch.enable_grad():
+            T = self.conf.T
+            A = self.A()[0] #.bool()
+            x = torch.randn(b_sz, *self.conf.im_shape, device=self.a.device)
+            a = self.a_forward
+            b = self.b_forward
+            sigma = self.Sigma
+            print(f"Sampling iteratively with T={T}")
+
+            self.eval()
+            g_x = self.g(x)
+            g_epses = torch.randn(T, b_sz, *self.conf.im_shape, device=self.a.device)
+            for t, g_eps in zip(range(T-2, -1, -1), g_epses):
+                print(g_x.min(), g_x.max(), g_x.abs().min())
+                print(a[t], b[t], sigma[t])
+                print(g_eps.min(), g_eps.max(), g_eps.abs().min())
+                print((a[t] + b[t] * A) )
+                import pdb; pdb.set_trace()
+                g_x = (a[t] + b[t] * A) * g_x.view(g_x.shape[0], -1) + sigma[t] * g_eps.view(g_eps.shape[0], -1)
+                
+            x_0 = self.g.inverse(g_x.view_as(x))
+        if torch.isnan(x_0).any():
+            import pdb; pdb.set_trace()
+        self.train()
+        return x_0
+
+    def sample_g_xt(self, x_0, t):
+        with torch.no_grad():
+            return (self.sqrt_bar_alpha[t] * self.g(x_0).view(x_0.shape[0], -1) + 
+                    (1-self.bar_alpha[t]) * self.g(torch.randn_like(x_0)).view(x_0.shape[0], -1)).view_as(x_0)
+
+                    
     
     def train_step(self, img, eps):
         loss, loss_img, loss_eps = self.get_losses(img, eps)
@@ -122,11 +161,11 @@ class LinearDiffusion(nn.Module):
             
             # Validation: generate samples and save grid.
             if (batch_idx + 1) % self.conf.val_freq == 0:
-                self.valid(epoch+1)
+                self.valid(epoch+1, img)
 
             self.sched.step()
 
-    def valid(self, epoch):
+    def valid(self, epoch, img=None):
         """Validation: Generate samples using the sample method and save a grid of generated images."""
         from models import test_model_properties  # Call model property tests.
         self.eval()
@@ -138,18 +177,35 @@ class LinearDiffusion(nn.Module):
         grid_save_path = os.path.join(self.conf.grid_dir, f"e{epoch}.png")
         imwrite(grid, grid_save_path)
         # we want to make a picture from self.a and save it as well
-        a_img = self.a.view(*self.conf.im_shape).repeat(3,1,1)
+        a_img = self.A().view(*self.conf.im_shape).repeat(3,1,1)
         a_save_path = os.path.join(self.conf.grid_dir, f"a_e{epoch}.png")
-        imwrite(a_img, a_save_path)
+        imwrite(a_img, a_save_path, bounds=(0,1))
         print(f"[Validation] Generated sample grid saved to {grid_save_path}")
+        print(f"images range: {generated.min().item()} - {generated.max().item()}")
+        print(f"a range: {a_img.min().item()} - {a_img.max().item()}")
+
+        if img is not None:
+            img = img[:sample_bs]
+            t = self.conf.T // 3
+            g_noisy = self.sample_g_xt(img, t)
+            g_denoised = self.A() * g_noisy.view(img.shape[0], -1) / self.sqrt_bar_alpha[t]
+            g_denoised = g_denoised.view_as(g_noisy)
+            x_denoised = self.g.inverse(g_denoised)
+            x_noisy = self.g.inverse(g_noisy)
+            denoised_save_path = os.path.join(self.conf.grid_dir, f"denoised_e{epoch}.png")
+            imwrite(make_grid(x_denoised, nrow=int(img.shape[0] ** 0.5)), denoised_save_path, bounds=(0,1))
+
+            noisy_save_path = os.path.join(self.conf.grid_dir, f"noisy_e{epoch}.png")
+            imwrite(make_grid(x_noisy, nrow=int(img.shape[0] ** 0.5)), noisy_save_path, bounds=(0,1))
+
         if self.conf.save_val_ckpt:
             self.save_checkpoint(f"e{epoch}.pth")
         self.train()
+
     
     def calc_and_update_p_q_sigma(self, T, flow_type):
         conf = self.conf
         device = self.a.device
-        one = torch.tensor(1.0, device=device)
 
         if conf.betas is None and conf.beta_min is not None and conf.beta_max is not None:
             conf.betas = torch.linspace(conf.beta_min, conf.beta_max, conf.T, device=device)
@@ -163,39 +219,45 @@ class LinearDiffusion(nn.Module):
         else:
             raise ValueError("Either betas or beta_min and beta_max must be provided.")
 
-        if flow_type in ["DDPM", "DDIM"]:
-            alphas = 1 - conf.betas
-            bar_alpha = torch.cumprod(alphas, dim=0)
-            bar_alpha = torch.cat([one.unsqueeze(0), bar_alpha], dim=0)
-            sqrt_bar_alpha = torch.sqrt(bar_alpha)
-            a = torch.sqrt(bar_alpha[:-1] / bar_alpha[1:])
-            b_old = (sqrt_bar_alpha[1:] - sqrt_bar_alpha[:-1]) / sqrt_bar_alpha[1:]
-            b = b_old / sqrt_bar_alpha[1:]
-            if flow_type == "DDPM":
-                sigma = torch.sqrt(conf.betas)
-                sigma = torch.cat([torch.ones(1, device=device), sigma], dim=0)
-            else:
-                sigma = torch.zeros(T+1, device=device)
-                sigma[0] = 1.0
+        if flow_type == "DDPM":
+            betas = conf.betas            # shape: (T,)
+            alphas = 1 - betas            # shape: (T,)
+            bar_alpha = torch.cumprod(alphas, dim=0)  # shape: (T,)
+            sqrt_bar_alpha = torch.sqrt(bar_alpha)      # shape: (T,)
+            
+            # We want to compute coefficients for t = 1, ..., T-1 (0-indexed: index 0 corresponds to time step 1)
+            # So we slice: bar_alpha[t-1] --> bar_alpha[:-1] and beta_t, alpha_t, bar_alpha[t] --> use indices [1:]
+            a = sqrt_bar_alpha[:-1] * betas[1:] / (1 - bar_alpha[1:])
+            b = alphas[1:].sqrt() * (1 - bar_alpha[:-1]) / (1 - bar_alpha[1:])
+            sigma = torch.sqrt(betas[1:] * (1 - bar_alpha[:-1]) / (1 - bar_alpha[1:]))
+
+            b = b / sqrt_bar_alpha[1:]
+            # sigma = torch.cat([torch.ones(1, device=device), sigma], dim=0)
+        elif flow_type == "DDIM":
+            pass
+
         elif flow_type == "Rectified Flow Matching":
             raise NotImplementedError("Rectified Flow Matching is not implemented yet.")
         else:
             raise ValueError(f"Unknown flow type: {flow_type}")
         
-        P = torch.empty(T+1, device=device)
-        Q = torch.empty(T+1, device=device)
-        P[0] = 1.0
-        Q[0] = 1.0
-        for t in range(1, T+1):
-            P[t] = P[t-1] * a[t-1]
-            Q[t] = Q[t-1] * (a[t-1] + b[t-1])
-        P[0] = P[T]
-        Q[0] = Q[T]
+        # P = torch.empty(T+1, device=device)
+        # Q = torch.empty(T+1, device=device)
+        # P[0] = 1.0
+        # Q[0] = 1.0
+        # for t in range(1, T+1):
+        #     P[t] = P[t-1] * a[t-1]
+        #     Q[t] = Q[t-1] * (a[t-1] + b[t-1])
+        # P[0] = P[T]
+        # Q[0] = Q[T]
 
-        self.register_buffer("P", P)
-        self.register_buffer("Q", Q)
+        # self.register_buffer("P", P)
+        # self.register_buffer("Q", Q)
         self.register_buffer("Sigma", sigma)
         self.register_buffer("sqrt_bar_alpha", sqrt_bar_alpha)
+        self.register_buffer("bar_alpha", bar_alpha)
+        self.register_buffer("a_forward", a)
+        self.register_buffer("b_forward", b)
 
     def save_checkpoint(self, filename):
         from datetime import datetime
