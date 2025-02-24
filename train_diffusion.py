@@ -5,6 +5,7 @@ import torch
 from utils import create_experiment_dirs, handle_devices
 from lin_diff import LinearDiffusion
 from data import get_data_loaders
+import pickle
 
 
 def main():
@@ -89,6 +90,8 @@ def main():
     
 
     # --- Initialize the model ---
+    with open(ckpt_dir + "/conf.pkl", "wb") as f:
+        pickle.dump(conf, f)
     model = LinearDiffusion(conf).to(conf.device)
     print("Model.sqrt_bar_alpha: ", model.sqrt_bar_alpha)
     
