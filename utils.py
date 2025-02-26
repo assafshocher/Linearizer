@@ -12,7 +12,7 @@ def imread(fname, bounds=(-1, 1), **kwargs):
     tensor = torch.clamp((vmax - vmin) * tensor + vmin, vmin, vmax)
     return tensor
 
-def imwrite(image, fname, bounds=(-1, 1), **kwargs):
+def imwrite(image, fname, bounds=(0, 1), **kwargs):
     from PIL import Image
     if image.shape[1] == 1:
         image = image.repeat(1, 3, 1, 1)

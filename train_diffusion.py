@@ -99,7 +99,7 @@ def main():
         model.load_checkpoint()
 
     # --- Start training ---
-    model.train_model(train_loader, conf.n_epochs, val_loader=val_loader)
+    model.train_model(train_loader, conf.n_epochs)
 
     # Save the final model checkpoint.
     final_ckpt_path = os.path.join(conf.ckpt_dir, f"linear_diffusion_final_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pth")

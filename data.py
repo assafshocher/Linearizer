@@ -29,6 +29,10 @@ def get_mnist_data_loaders(train_bs, val_bs, orig_size, target_size, use_ddp=Fal
     return train_loader, val_loader
 
 
+def mnist_denormalize(x):
+    return x * 0.3081 + 0.1307
+
+
 def get_cifar10_data_loaders(train_bs, val_bs, orig_size, target_size, use_ddp=False, world_size=1, rank=0):
     # CIFAR-10 normalization values.
     mean = (0.4914, 0.4822, 0.4465)

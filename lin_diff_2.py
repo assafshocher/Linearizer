@@ -6,7 +6,8 @@ import torch.optim as optim
 from models import InvTransformerNet
 from torchvision.utils import make_grid
 from utils import imwrite, find_latest_checkpoint
-import wandb
+from data import mnist_denormalize as denorm
+# import wandb
 
 
 class LinearDiffusion(nn.Module):
@@ -37,11 +38,19 @@ class LinearDiffusion(nn.Module):
 
     def A(self, t):
         t = torch.tensor(t, device=self.a.device)
-        t_one_hot = F.one_hot(t, self.conf.T+1).float()
         t = t.view(-1, 1)
-        A = self.a_net(t_one_hot)
-        A = A * (t > 0).float() + torch.ones_like(A) * (t == 0).float()
-        return A
+        t_one_hot = F.one_hot(t, self.conf.T+1).float()
+        A = self.a_net(t_one_hot.view(-1, self.conf.T+1))  #.sigmoid()
+        # A = A * (t > 0).float()
+        # return A + torch.ones_like(A)
+        # s = t / self.conf.T
+        # c = 2 * (s - 0.5).pow(8)
+        # A = c * (1-s) + (1-c) * A
+        # return ((A > 0.5).float().detach() + A - A.detach()) / self.a[t].clamp(0.5/self.conf.T, 1.0)
+        # return A #/ self.a[t].clamp(0.5/self.conf.T, 1.0)
+        # if t.shape[0] == 1:
+        #     import pdb; pdb.set_trace()
+        return A + torch.cat([torch.ones_like(A[:, :A.shape[1]//2]), torch.zeros_like(A[:, A.shape[1]//2:])], dim=1)
     
     def forward(self, xt, t):
         # Surprisingly, this is almost never used, as training and sampling are done differently.
@@ -84,8 +93,9 @@ class LinearDiffusion(nn.Module):
             g_xT = self.g(xT)
             g_xt = g_xT
             for t in range(self.conf.T-1, -1, -1):
-                g_hat_x0 = self.denoise_g_xt(g_xt, t+1)
-                g_xt = self.sample_g_xt(g_hat_x0.view_as(g_xt), t, g_xT)
+                g_hat_x0 = self.denoise_g_xt(g_xt, t+1).view_as(g_xt)
+                g_xt = (self.sample_g_xt(g_hat_x0, t, g_xT) + g_xt - 
+                        self.sample_g_xt(g_hat_x0, t+1, g_xT))
             hat_x_0 = self.g.inverse(g_xt)
         self.train()
         return hat_x_0
@@ -108,7 +118,7 @@ class LinearDiffusion(nn.Module):
         self.opt.step()
         return loss.item(), loss_img.item(), loss_eps.item()
     
-    def train_model(self, train_loader, n_epochs, val_loader=None):
+    def train_model(self, train_loader, n_epochs):
         self.opt = optim.Adam(self.parameters(), lr=self.conf.lr)
         self.sched = optim.lr_scheduler.CosineAnnealingLR(self.opt, n_epochs)
         device = self.conf.device
@@ -159,33 +169,38 @@ class LinearDiffusion(nn.Module):
         # Determine the number of samples to generate (default to 16 if not specified in conf)
         sample_bs = getattr(self.conf, "val_sample_bs", 16)
         generated = self.sample(b_sz=sample_bs, nograd=True)
-        grid = make_grid(generated, nrow=int(sample_bs ** 0.5))
+        grid = make_grid(denorm(generated), nrow=int(sample_bs ** 0.5))
         grid_save_path = os.path.join(self.conf.grid_dir, f"e{epoch}.png")
         imwrite(grid, grid_save_path)
         # we want to make a picture from self.a and save it as well
         t = self.conf.T // 2
         a_img = self.A(t).view(*self.conf.im_shape).repeat(3,1,1)
-        a_save_path = os.path.join(self.conf.grid_dir, f"a_e{epoch}.png")
+        a_save_path = os.path.join(self.conf.grid_dir, f"a05_e{epoch}.png")
+        imwrite(a_img, a_save_path, bounds=(0,1))
+        a_img = self.A(2).view(*self.conf.im_shape).repeat(3,1,1)
+        a_save_path = os.path.join(self.conf.grid_dir, f"a0_e{epoch}.png")
+        imwrite(a_img, a_save_path, bounds=(0,1))
+        a_img = self.A(self.conf.T-2).view(*self.conf.im_shape).repeat(3,1,1)
+        a_save_path = os.path.join(self.conf.grid_dir, f"aT_e{epoch}.png")
         imwrite(a_img, a_save_path, bounds=(0,1))
         print(f"[Validation] Generated sample grid saved to {grid_save_path}")
-        print(f"images range: {generated.min().item()} - {generated.max().item()}")
+        print(f"images range: {denorm(generated).min().item()} - {denorm(generated).max().item()}")
         print(f"a range: {a_img.min().item()} - {a_img.max().item()}")
 
         if img is not None:
             img = img[:sample_bs]
             t = self.conf.T // 3
-            g_noisy = self.sample_g_xt(img, t)
+            g_noisy = self.sample_g_xt(self.g(img), t)
             g_denoised = self.denoise_g_xt(g_noisy, t)
             x_denoised = self.g.inverse(g_denoised)
             x_noisy = self.g.inverse(g_noisy)
-            import pdb; pdb.set_trace()
             denoised_save_path = os.path.join(self.conf.grid_dir, f"denoised_e{epoch}.png")
-            imwrite(make_grid(x_denoised, nrow=int(img.shape[0] ** 0.5)), denoised_save_path, bounds=(0,1))
-            print(f"denoised range: {x_denoised.min().item()} - {x_denoised.max().item()}")
+            imwrite(make_grid(denorm(x_denoised), nrow=int(img.shape[0] ** 0.5)), denoised_save_path, bounds=(0,1))
+            print(f"denoised range: {denorm(x_denoised).min().item()} - {denorm(x_denoised).max().item()}")
 
 
             noisy_save_path = os.path.join(self.conf.grid_dir, f"noisy_e{epoch}.png")
-            imwrite(make_grid(x_noisy, nrow=int(img.shape[0] ** 0.5)), noisy_save_path, bounds=(0,1))
+            imwrite(make_grid(denorm(x_noisy), nrow=int(img.shape[0] ** 0.5)), noisy_save_path, bounds=(0,1))
 
         if self.conf.save_val_ckpt:
             self.save_checkpoint(f"e{epoch}.pth")
@@ -193,7 +208,7 @@ class LinearDiffusion(nn.Module):
 
     
     def calc_and_update_p_q_sigma(self, T, flow_type):
-        # b = torch.arange(T, device=self.device()) / (T-1)
+        # b = torch.arange(T+1, device=self.device()) / T
         # a = 1 - b
 
         a_ = torch.arange(T+1, device=self.device()) / T
