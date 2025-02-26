@@ -7,6 +7,7 @@ from models import InvTransformerNet
 from torchvision.utils import make_grid
 from utils import imwrite, find_latest_checkpoint
 import wandb
+import matplotlib.pyplot as plt
 
 
 class LinearDiffusion(nn.Module):
@@ -34,11 +35,13 @@ class LinearDiffusion(nn.Module):
         self.log_counter = 0
 
 
-    def A(self, t):
-        t = torch.tensor(t, device=self.a.device)
-        t = F.one_hot(t, self.conf.T).float()
-        t = t.unsqueeze(0) if t.dim() <= 1 else t
-        return self.a_net(t).relu()
+    def A(self):
+        # Straight-through estimator for the binary mask A.
+        a = self.a
+        # A = (a > 0).float()
+        # A = A.detach() + a - a.detach()
+        A = (a.tanh() + 1)/2
+        return A[None, :]
     
     def forward(self, x, t):
         # Surprisingly, this is almost never used, as training and sampling are done differently.
@@ -93,12 +96,21 @@ class LinearDiffusion(nn.Module):
 
             self.eval()
             g_x = self.g(x)
-            g_epses = self.g(torch.randn(T*b_sz, *self.conf.im_shape, device=self.a.device))
-            g_epses = g_epses.view(T, b_sz, *self.conf.im_shape)
-            for t, g_eps in zip(range(T-2, -1, -1), g_epses):
-                g_x = (a[t] + b[t] * self.A(t)) * g_x.view(g_x.shape[0], -1) + sigma[t] * g_eps.view(g_eps.shape[0], -1)
-                
+            g_epses = torch.randn(T, b_sz, *self.conf.im_shape, device=self.a.device)
+            gmin = []
+            for t, g_eps in zip(range(T-2, 0, -1), g_epses):
+                gmin.append(g_x.min().item())
+                print("g_min: ", g_x.min().item(), "g_max: ", g_x.max().item(), "g_abs_min: ", g_x.abs().min().item())
+                print("at: ", a[t].item(), "bt: ", b[t].item(), "sigma t: ", sigma[t].item())
+                print("g_eps_min: ", g_eps.min().item(), "g_eps_max: ", g_eps.max().item(), "g_eps_abs_min: ", g_eps.abs().min())
+                print("Unclear calculation: ", (a[t] + b[t] * A) )
+                # tmp.append(self.g.inverse(g_x.view_as(x))[0, :].norm().item())
+                # print("New calculation: ", self.g.inverse(g_x.view_as(x))[0, :].norm().item())
+                # tmp2.append(g_x[0, :].norm().item())
+                # import pdb; pdb.set_trace()
+                g_x = (a[t] + b[t] * A) * g_x.view(g_x.shape[0], -1) + sigma[t] * self.g(g_eps).view(g_eps.shape[0], -1)
             x_0 = self.g.inverse(g_x.view_as(x))
+
         # if torch.isnan(x_0).any():
         #     import pdb; pdb.set_trace()
         self.train()
@@ -107,7 +119,7 @@ class LinearDiffusion(nn.Module):
     def sample_g_xt(self, x_0, t):
         with torch.no_grad():
             return (self.sqrt_bar_alpha[t] * self.g(x_0).view(x_0.shape[0], -1) + 
-                    (1-self.bar_alpha[t]) * self.g(torch.randn_like(x_0)).view(x_0.shape[0], -1)).view_as(x_0)
+                    torch.sqrt(1-self.bar_alpha[t]) * self.g(torch.randn_like(x_0)).view(x_0.shape[0], -1)).view_as(x_0)
 
                     
     
@@ -195,11 +207,15 @@ class LinearDiffusion(nn.Module):
             noisy_save_path = os.path.join(self.conf.grid_dir, f"noisy_e{epoch}.png")
             imwrite(make_grid(x_noisy, nrow=int(img.shape[0] ** 0.5)), noisy_save_path, bounds=(0,1))
 
+            if self.conf.wandb:
+                wandb.log({'denoising MSE': torch.sum((x_denoised - img)**2).item(),
+                           'generated min': generated.min().item(),
+                           'generated max': generated.max().item()}, step=self.log_counter)
         if self.conf.save_val_ckpt:
             self.save_checkpoint(f"e{epoch}.pth")
         self.train()
 
-    
+
     def calc_and_update_p_q_sigma(self, T, flow_type):
         conf = self.conf
         device = self.a.device
@@ -227,13 +243,14 @@ class LinearDiffusion(nn.Module):
             pass
             # We want to compute coefficients for t = 1, ..., T-1 (0-indexed: index 0 corresponds to time step 1)
             # So we slice: bar_alpha[t-1] --> bar_alpha[:-1] and beta_t, alpha_t, bar_alpha[t] --> use indices [1:]
-            # a = sqrt_bar_alpha[:-1] * betas[1:] / (1 - bar_alpha[1:])
+            a = sqrt_bar_alpha[:-1] * betas[1:] / (1 - bar_alpha[1:])
             # b = alphas[1:].sqrt() * (1 - bar_alpha[:-1]) / (1 - bar_alpha[1:])
-            # sigma = torch.sqrt(betas[1:] * (1 - bar_alpha[:-1]) / (1 - bar_alpha[1:]))
-            
-
             # b = b / sqrt_bar_alpha[1:]
+            sigma = torch.sqrt(betas[1:] * (1 - bar_alpha[:-1]) / (1 - bar_alpha[1:]))
             # sigma = torch.cat([torch.ones(1, device=device), sigma], dim=0)
+            # New try
+            b = sqrt_bar_alpha[:-1] * (1 - alphas[1:]) / (1 - bar_alpha[1:])
+            b = b / sqrt_bar_alpha[1:]
         elif flow_type == "DDIM":
             pass
 
