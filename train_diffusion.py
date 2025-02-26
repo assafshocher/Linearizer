@@ -3,7 +3,7 @@ import argparse
 from datetime import datetime
 import torch
 from utils import create_experiment_dirs, handle_devices
-from lin_diff import LinearDiffusion
+from lin_diff_2 import LinearDiffusion
 from data import get_data_loaders
 
 
@@ -90,7 +90,6 @@ def main():
 
     # --- Initialize the model ---
     model = LinearDiffusion(conf).to(conf.device)
-    print(model.sqrt_bar_alpha)
     
     # If requested, load the latest checkpoint.
     if conf.load_latest:
