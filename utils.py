@@ -17,7 +17,7 @@ def imwrite(image, fname, bounds=(0, 1), **kwargs):
     if image.shape[1] == 1:
         image = image.repeat(1, 3, 1, 1)
     vmin, vmax = bounds
-    image = (image - vmin) / (vmax - vmin)
+    # image = (image - vmin) / (vmax - vmin)
     image = (image * 255.0).round().clip(0, 255).to(torch.uint8)
     Image.fromarray(image.permute(1,2,0).cpu().numpy(), 'RGB').save(fname)
 

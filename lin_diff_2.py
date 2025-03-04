@@ -50,7 +50,7 @@ class LinearDiffusion(nn.Module):
         # return A #/ self.a[t].clamp(0.5/self.conf.T, 1.0)
         # if t.shape[0] == 1:
         #     import pdb; pdb.set_trace()
-        return A + torch.cat([torch.ones_like(A[:, :A.shape[1]//2]), torch.zeros_like(A[:, A.shape[1]//2:])], dim=1)
+        return A #+ torch.cat([torch.ones_like(A[:, :A.shape[1]//2]), torch.zeros_like(A[:, A.shape[1]//2:])], dim=1)
     
     def forward(self, xt, t):
         # Surprisingly, this is almost never used, as training and sampling are done differently.
@@ -174,7 +174,7 @@ class LinearDiffusion(nn.Module):
         imwrite(grid, grid_save_path)
         # we want to make a picture from self.a and save it as well
         t = self.conf.T // 2
-        a_img = self.A(t).view(*self.conf.im_shape).repeat(3,1,1)
+        a_img = (self.a[t] * self.A(t)).view(*self.conf.im_shape).repeat(3,1,1)
         a_save_path = os.path.join(self.conf.grid_dir, f"a05_e{epoch}.png")
         imwrite(a_img, a_save_path, bounds=(0,1))
         a_img = self.A(2).view(*self.conf.im_shape).repeat(3,1,1)
@@ -184,7 +184,8 @@ class LinearDiffusion(nn.Module):
         a_save_path = os.path.join(self.conf.grid_dir, f"aT_e{epoch}.png")
         imwrite(a_img, a_save_path, bounds=(0,1))
         print(f"[Validation] Generated sample grid saved to {grid_save_path}")
-        print(f"images range: {denorm(generated).min().item()} - {denorm(generated).max().item()}")
+        print(f"generated range: {denorm(generated).min().item()} - {denorm(generated).max().item()}")
+        print(f"generated mean: {denorm(generated).mean().item()}, std: {denorm(generated).std().item()}")
         print(f"a range: {a_img.min().item()} - {a_img.max().item()}")
 
         if img is not None:
@@ -196,6 +197,7 @@ class LinearDiffusion(nn.Module):
             x_noisy = self.g.inverse(g_noisy)
             denoised_save_path = os.path.join(self.conf.grid_dir, f"denoised_e{epoch}.png")
             imwrite(make_grid(denorm(x_denoised), nrow=int(img.shape[0] ** 0.5)), denoised_save_path, bounds=(0,1))
+            print(f"noisy range: {denorm(x_noisy).min().item()} - {denorm(x_noisy).max().item()}")
             print(f"denoised range: {denorm(x_denoised).min().item()} - {denorm(x_denoised).max().item()}")
 
 
