@@ -51,8 +51,6 @@ class LinearDiffusion(nn.Module):
         return g_hat_x0.view_as(g_xt)
     
     def forward(self, xt, t):
-        # Surprisingly, this is almost never used, as training and sampling are done differently.
-        # For the final main methods of the class see self.sample and self.train_model.
         gx = self.g(xt)
         g_hat_x0 = self.A(gx, t)
         return self.g.inverse(g_hat_x0)
@@ -111,9 +109,7 @@ class LinearDiffusion(nn.Module):
         with torch.no_grad():
             g_xt = self.sample_g_xt(self.g(x0), t)
             xt = self.g.inverse(g_xt)
-        g_xt = self.g(xt.detach())
-        hat_g_x0 = self.A(g_xt, t)
-        hat_x0 = self.g.inverse(hat_g_x0)
+        hat_x0 = self.forward(xt.detach(), t)
         loss = (hat_x0 - x0).pow(2).mean()
         self.opt.zero_grad()
         loss.backward()
