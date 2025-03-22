@@ -11,16 +11,16 @@ import pickle
 def main():
     parser = argparse.ArgumentParser()
     # General training arguments.
-    parser.add_argument("--device", type=str, required=True,
+    parser.add_argument("--device", type=str, default="cuda:0",
                         help="Device to use, e.g., 'cuda:0' or 'cpu'.")
-    parser.add_argument("--n_epochs", type=int, default=100, help="Number of training epochs.")
-    parser.add_argument("--batch_size", type=int, default=256, help="Training batch size.")
+    parser.add_argument("--n_epochs", type=int, default=40, help="Number of training epochs.")
+    parser.add_argument("--batch_size", type=int, default=64, help="Training batch size.")
     parser.add_argument("--val_batch_size", type=int, default=256, help="Validation batch size.")
     parser.add_argument("--log_freq", type=int, default=10, help="Log frequency (in steps).")
     parser.add_argument("--val_freq", type=int, default=1, help="Validation frequency (in epochs).")
     parser.add_argument("--save_val_ckpt", action="store_true", default=False,
                         help="Save a checkpoint after validation.")
-    parser.add_argument("--lr", type=float, default=0.001, help="Initial learning rate.")
+    parser.add_argument("--lr", type=float, default=0.000333, help="Initial learning rate.")
     parser.add_argument("--weight_decay", type=float, default=1e-4, help="Weight decay (L2 penalty).")
     parser.add_argument("--use_ddp", action="store_true", default=False,
                         help="Use DistributedDataParallel (DDP).")
@@ -48,19 +48,15 @@ def main():
     
     # Diffusion process arguments.
     parser.add_argument("--T", type=int, default=1000, help="Number of timesteps for the diffusion process.")
-    parser.add_argument("--flow_type", type=str, default="DDPM", help="Flow type (e.g., DDPM, DDIM).")
-    parser.add_argument("--betas", type=float, nargs='*', default=None, help="Optional beta schedule (list of floats).")
-    parser.add_argument("--beta_min", type=float, default=1e-4, help="Minimum beta for default schedule.")
-    parser.add_argument("--beta_max", type=float, default=0.02, help="Maximum beta for default schedule.")
-    parser.add_argument("--img_w", type=float, default=1.0, help="Weight for image loss.")
-    parser.add_argument("--eps_w", type=float, default=1.0, help="Weight for epsilon loss.")
+    parser.add_argument("--flow_type", type=str, default="linear", help=".")
     parser.add_argument("--sample_iterative", action="store_true", default=False,
                         help="Sample iteratively instead of one-step.")
     parser.add_argument("--wandb", type=bool, default=False)
-
-    # Checkpoint loading flag.
+    parser.add_argument("--A_rank", type=int, default=128, help="Maximum rank of A.")
+    # others
     parser.add_argument("--load_latest", action="store_true", default=False,
                         help="If set, load the latest checkpoint for this experiment.")
+    parser.add_argument("--num_frames", type=int, default=50, help="Number of frames for visualizations.")
 
     conf = parser.parse_args()
     print(conf)

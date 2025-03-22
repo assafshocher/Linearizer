@@ -11,8 +11,8 @@ class InvMLP(nn.Module):
         self.t2 = nn.ModuleList([])
         self.p = nn.ModuleList([])
         for _ in range(n_layers):
-            self.t1.append(nn.Sequential(nn.Linear(dim//2, dim//2, bias=False), nn.Tanh()))
-            self.t2.append(nn.Sequential(nn.Linear(dim//2, dim//2, bias=False), nn.Tanh()))
+            self.t1.append(nn.Sequential(nn.Linear(dim//2, dim//2, bias=True), nn.Tanh()))
+            self.t2.append(nn.Sequential(nn.Linear(dim//2, dim//2, bias=True), nn.Tanh()))
             self.p.append(InvertiblePermutation(dim))
         self.n_layers = n_layers
         self.s = 2 ** (-0.5)
@@ -62,7 +62,7 @@ class InvTransformerNet(nn.Module):
     def __init__(self, num_heads, num_layers, patch_sz, im_sz, rgb=True):
         super().__init__()
         dim = 3*patch_sz**2 if rgb else patch_sz**2
-        self.blocks = nn.ModuleList([InvTransformerBlock(dim//2, num_heads) for _ in range(num_layers)])
+        self.blocks = nn.ModuleList([InvTransformerBlock(dim//2, num_heads, patch_sz, im_sz) for _ in range(num_layers)])
         self.p = nn.ModuleList([InvertiblePermutation(dim, axis=2) for _ in range(num_layers)])
         self.unfold = nn.Unfold(kernel_size=patch_sz, stride=patch_sz)
         self.fold = nn.Fold(output_size=(im_sz, im_sz), kernel_size=patch_sz, stride=patch_sz)
@@ -89,10 +89,10 @@ class InvTransformerNet(nn.Module):
 
 
 class InvTransformerBlock(nn.Module):
-    def __init__(self, dim, num_heads):
+    def __init__(self, dim, num_heads, patch_sz=16, im_sz=256):
         super().__init__()
         self.F = AttentionSubBlock(dim=dim, num_heads=num_heads)
-        self.G = MLPSubblock(dim=dim)
+        self.G = MLPSubblock(dim=dim, patch_sz=patch_sz, im_sz=im_sz)
         self.s = 2 ** (-0.5)
 
     def forward(self, X_1, X_2):
@@ -107,18 +107,36 @@ class InvTransformerBlock(nn.Module):
 
 
 class MLPSubblock(nn.Module):
-    def __init__(self, dim, mlp_ratio=4):
+    def __init__(self, dim, patch_sz, im_sz, mlp_ratio=4):
         super().__init__()
         self.norm1 = nn.LayerNorm(dim, eps=1e-6, elementwise_affine=False)
         self.norm2 = nn.LayerNorm(dim, eps=1e-6, elementwise_affine=False)
+        self.mlp1 = nn.Sequential(
+            nn.Linear(dim, dim * mlp_ratio * 2, bias=True),
+            nn.GELU())
+        self.mlp2 = nn.Sequential(
+            nn.Linear(dim * mlp_ratio * 2, dim, bias=True))
+        
         self.mlp = nn.Sequential(
-            nn.Linear(dim, dim * mlp_ratio, bias=False),
+            nn.Linear(dim, dim * mlp_ratio, bias=True),
             nn.GELU(),
-            nn.Linear(dim * mlp_ratio, dim, bias=False))
+            nn.Linear(dim * mlp_ratio, dim, bias=True))
+        
+        self.fold = nn.Fold(output_size=(im_sz, im_sz), kernel_size=patch_sz, stride=patch_sz)
+        self.unfold = nn.Unfold(kernel_size=patch_sz, stride=patch_sz)
+        
+        self.cnn = nn.Sequential(
+            nn.Conv2d(mlp_ratio, mlp_ratio, kernel_size=7, bias=True, padding=3),
+            nn.GELU(),
+            nn.Conv2d(mlp_ratio, mlp_ratio, kernel_size=7, bias=True, padding=3))
 
     def forward(self, x):
+        # x = self.mlp1(self.norm1(x))
+        # x = self.fold(x.permute(0,2,1))
+        # x = self.cnn(x)
+        # x = self.unfold(x).permute(0,2,1)
+        # x = self.mlp2(self.norm2(x))
         return self.norm2(self.mlp(self.norm1(x)))
-        # return self.mlp(self.norm1(x))
 
 
 
@@ -128,25 +146,10 @@ class AttentionSubBlock(nn.Module):
         self.norm1 = nn.LayerNorm(dim * expand_ratio, eps=1e-6, elementwise_affine=False)
         self.norm2 = nn.LayerNorm(dim, eps=1e-6, elementwise_affine=False)
         self.attn = MHA(dim * expand_ratio, num_heads, batch_first=True, bias=True)
-        self.expand = nn.Linear(dim, dim * expand_ratio, bias=False)
-        self.shrink = nn.Linear(dim * expand_ratio, dim, bias=False)
+        self.expand = nn.Linear(dim, dim * expand_ratio, bias=True)
+        self.shrink = nn.Linear(dim * expand_ratio, dim, bias=True)
         self.v_start = dim * 2
         self.s = expand_ratio ** (-0.5)
-        # Orthogonal initialization for in_proj_weight (Q, K, V)
-        if hasattr(self.attn, 'in_proj_weight'):
-            nn.init.orthogonal_(self.attn.in_proj_weight)
-        
-        # If bias exists, initialize it to zero
-        if hasattr(self.attn, 'in_proj_bias') and self.attn.in_proj_bias is not None:
-            nn.init.constant_(self.attn.in_proj_bias, 0.0)
-        
-        # Orthogonal initialization for out_proj.weight
-        if hasattr(self.attn, 'out_proj') and hasattr(self.attn.out_proj, 'weight'):
-            nn.init.orthogonal_(self.attn.out_proj.weight)
-        
-        # If out_proj has bias, initialize it to zero
-        if hasattr(self.attn.out_proj, 'bias') and self.attn.out_proj.bias is not None:
-            nn.init.constant_(self.attn.out_proj.bias, 0.0)
 
     def forward(self, x):
         # we want biases for q, k but not for v
@@ -246,16 +249,19 @@ def linearity_test(x1, x2, a1, a2, model, thr=1e-4):
 
 @torch.no_grad()
 def unitarity_test(x, y, model, test_y, thr=10):
-    zx = model.gx(x)
-    ratio_x = (zx/x.view_as(zx)).abs().mean()
+    zx_norm = model.gx(x).flatten(start_dim=1).pow(2).sum(dim=-1, keepdim=True)
+    x_norm = x.flatten(start_dim=1).pow(2).sum(dim=-1, keepdim=True)
+    ratio_x = (zx_norm / x_norm).mean()
     ratio_x_ok = ratio_x < thr
 
     if test_y:
-        zy = model.gy(y)
-        ratio_y = (zy/y.view_as(zy)).abs().mean()
+        zy_norm = model.gy(y).flatten(start_dim=1).pow(2).sum(dim=-1, keepdim=True)
+        y_norm = y.flatten(start_dim=1).pow(2).sum(dim=-1, keepdim=True)
+        ratio_y = (zy_norm / y_norm).mean()
         ratio_y_ok = ratio_y < thr
 
     print(f"Unitarity test: X:{ratio_x_ok} ({ratio_x.item()})")
     if test_y:
         print(f"Unitarity test: Y:{ratio_y_ok} ({ratio_y.item()})")
+
 
