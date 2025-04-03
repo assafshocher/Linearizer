@@ -309,26 +309,24 @@ class LinearUnet(nn.Module):
 
 
 class UnetBlock(nn.Module):
-    def __init__(self, conf, down1up0=True, first_or_last=False, chans=64, ksz=6, stride=2, n_layers=1, norm=nn.InstanceNorm2d, activation=nn.GELU()):
+    def __init__(self, conf, chans_in, chans_out, down1up0=True, ksz=6, stride=2, n_layers=1, norm=nn.InstanceNorm2d, activation=nn.GELU()):
         super().__init__()
         if down1up0:
-            chans_in = chans if not first_or_last else 1
-            self.main_conv = nn.Conv2d(chans_in, chans, kernel_size=ksz, padding=(ksz-stride)//2, bias=True, stride=stride)
+            self.main_conv = nn.Conv2d(chans_in, chans_out, kernel_size=ksz, padding=(ksz-stride)//2, bias=True, stride=stride)
         else:
-            chans_out = 1 if (first_or_last and n_layers == 1) else chans
-            self.main_conv = nn.ConvTranspose2d(chans, chans_out, kernel_size=ksz, bias=True, output_padding=(ksz-stride)//2, stride=stride)
-        self.extra_convs = nn.ModuleList()
-        for ind in range(n_layers-1):
-            chans_out = 1 if (ind == n_layers-2 and first_or_last) else chans
-            self.extra_convs.append(
-                nn.Conv2d(chans, chans_out, kernel_size=3, padding=1, bias=False)
-            )
+            self.main_conv = nn.ConvTranspose2d(chans_in, chans_out, kernel_size=ksz, bias=True, output_padding=(ksz-stride)//2, stride=stride)
+        
+        self.extra_convs = nn.ModuleList([
+                nn.Conv2d(chans_out, chans_out, kernel_size=3, padding=1, bias=False)
+                for _ in range(n_layers-1)
+            ])
         self.activation = activation
-        self.norm = norm(chans) if norm else nn.Identity()
+        self.norm = norm(chans_out) if norm else nn.Identity()
     
     def forward(self, x):
         x = self.main_conv(x)
         x = self.norm(x)
+        x = self.activation(x)
         for extra_conv in self.extra_convs:
             x = extra_conv(x)
             x = self.activation(x)
@@ -343,24 +341,36 @@ class Unet(nn.Module):
         self.down_blocks = nn.ModuleList()
         self.up_blocks = nn.ModuleList()
         self.linear_layers = nn.ModuleList()
-
-        chans = conf.im_shape[-3]
-        ranks = [conf.A_rank * (2 ** i) for i in range(conf.n_levels)]
-        im_szs = [int(conf.im_shape[-1]**2 * (4 ** (-i))) for i in range(conf.n_levels)]
         
-        for rank, im_sz in zip(ranks, im_szs):
+        self.entry_conv = nn.Conv2d(conf.im_shape[0], conf.base_chans, kernel_size=3, padding=1, bias=True)
+        self.exit_conv = nn.Conv2d(conf.base_chans, conf.im_shape[0], kernel_size=3, padding=1, bias=True)
+
+        for ind in range(conf.n_levels):
+            chans_in = conf.base_chans * (2 ** ind)
+            chans_out = conf.base_chans * (2 ** (ind+1))
             self.down_blocks.append(
-                UnetBlock(conf, down1up0=True, chans=chans, ksz=6, stride=2, n_layers=1, norm=nn.InstanceNorm2d, activation=nn.GELU()))
-            self.up_blocks.append(
-                UnetBlock(conf, down1up0=False, chans=chans, ksz=2, stride=2, n_layers=1, norm=nn.InstanceNorm2d, activation=nn.GELU()))
+                UnetBlock(conf, down1up0=True, chans_in=chans_in, chans_out=chans_out, 
+                          ksz=6, stride=2, n_layers=2))
             
-    def forward(self, x):
+            chans_in = conf.base_chans * (2 ** (conf.n_levels - ind))
+            chans_out = conf.base_chans * (2 ** (conf.n_levels - ind - 1))
+            self.up_blocks.append(
+                UnetBlock(conf, down1up0=False, chans_in=chans_in, chans_out=chans_out, 
+                          ksz=2, stride=2, n_layers=2))
+            
+    def forward(self, x, debug=False):
+        x = self.entry_conv(x)
         block_results = [x]
         for downblock in self.down_blocks:
+            if debug:
+                print(x.shape)
             x = downblock(x)
             block_results.append(x)
         x = block_results[-1]
         for block_result, upblock in zip(reversed(block_results[:-1]), self.up_blocks):
             x = upblock(x) + block_result
+            if debug:
+                print(x.shape)
+        x = self.exit_conv(x)
         return x
             
