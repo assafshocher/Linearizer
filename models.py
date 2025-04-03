@@ -4,42 +4,6 @@ import torch.nn.functional as F
 from torch.nn import MultiheadAttention as MHA
 
 
-class InvMLP(nn.Module):
-    def __init__(self, dim, n_layers):
-        super(InvMLP, self).__init__()
-        self.t1 = nn.ModuleList([])
-        self.t2 = nn.ModuleList([])
-        self.p = nn.ModuleList([])
-        for _ in range(n_layers):
-            self.t1.append(nn.Sequential(nn.Linear(dim//2, dim//2, bias=True), nn.Tanh()))
-            self.t2.append(nn.Sequential(nn.Linear(dim//2, dim//2, bias=True), nn.Tanh()))
-            self.p.append(InvertiblePermutation(dim))
-        self.n_layers = n_layers
-        self.s = 2 ** (-0.5)
-        
-    def forward(self, x):
-        if self.n_layers == 0:
-            return x
-        for t1, t2, p,in zip(self.t1, self.t2, self.p):
-            x = p(x)
-            x1, x2 = x.split(x.shape[-1]//2, dim=-1)
-            x2 = (x2 + t2(x1)) * self.s
-            x1 = (x1 + t1(x2)) * self.s
-            x = torch.cat([x1, x2], dim=-1)
-        return x
-    
-    def inverse(self, y):
-        if self.n_layers == 0:
-            return y
-        for t1, t2, p in reversed(list(zip(self.t1, self.t2, self.p))):
-            y1, y2 = y.split(y.size(1)//2, dim=-1)
-            y1 = y1 / self.s - t1(y2)
-            y2 = y2 / self.s - t2(y1)
-            y = torch.cat([y1, y2], dim=-1)
-            y = p.inverse(y)
-        return y
-
-
 class InvertiblePermutation(nn.Module):
     def __init__(self, n, axis=1):
         super(InvertiblePermutation, self).__init__()
@@ -56,7 +20,6 @@ class InvertiblePermutation(nn.Module):
         return torch.index_select(y, self.axis, self.inv_perm)
 
         
-
 
 class InvTransformerNet(nn.Module):
     def __init__(self, num_heads, num_layers, patch_sz, im_sz, rgb=True):
@@ -93,7 +56,7 @@ class InvTransformerBlock(nn.Module):
         super().__init__()
         self.F = AttentionSubBlock(dim=dim, num_heads=num_heads)
         self.G = MLPSubblock(dim=dim, patch_sz=patch_sz, im_sz=im_sz)
-        self.s = 2 ** (-0.5)
+        self.s = 1. #2 ** (-0.5)
 
     def forward(self, X_1, X_2):
         Y_1 = (X_1 + self.F(X_2)) * self.s
@@ -111,33 +74,13 @@ class MLPSubblock(nn.Module):
         super().__init__()
         self.norm1 = nn.LayerNorm(dim, eps=1e-6, elementwise_affine=False)
         self.norm2 = nn.LayerNorm(dim, eps=1e-6, elementwise_affine=False)
-        self.mlp1 = nn.Sequential(
-            nn.Linear(dim, dim * mlp_ratio * 2, bias=True),
-            nn.GELU())
-        self.mlp2 = nn.Sequential(
-            nn.Linear(dim * mlp_ratio * 2, dim, bias=True))
-        
         self.mlp = nn.Sequential(
             nn.Linear(dim, dim * mlp_ratio, bias=True),
             nn.GELU(),
             nn.Linear(dim * mlp_ratio, dim, bias=True))
-        
-        self.fold = nn.Fold(output_size=(im_sz, im_sz), kernel_size=patch_sz, stride=patch_sz)
-        self.unfold = nn.Unfold(kernel_size=patch_sz, stride=patch_sz)
-        
-        self.cnn = nn.Sequential(
-            nn.Conv2d(mlp_ratio, mlp_ratio, kernel_size=7, bias=True, padding=3),
-            nn.GELU(),
-            nn.Conv2d(mlp_ratio, mlp_ratio, kernel_size=7, bias=True, padding=3))
 
     def forward(self, x):
-        # x = self.mlp1(self.norm1(x))
-        # x = self.fold(x.permute(0,2,1))
-        # x = self.cnn(x)
-        # x = self.unfold(x).permute(0,2,1)
-        # x = self.mlp2(self.norm2(x))
         return self.norm2(self.mlp(self.norm1(x)))
-
 
 
 class AttentionSubBlock(nn.Module):
@@ -265,3 +208,99 @@ def unitarity_test(x, y, model, test_y, thr=10):
         print(f"Unitarity test: Y:{ratio_y_ok} ({ratio_y.item()})")
 
 
+class TimeMLPBlock(nn.Module):
+    def __init__(self, T, im_sz, rank, hidden_dim=256):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(T+1, hidden_dim),
+            nn.GELU(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.GELU(),
+            nn.Linear(hidden_dim, im_sz*(rank*2+1)))
+        self.T = T
+        self.rank = rank
+        self.im_sz = im_sz
+    def forward(self, t, at):
+        # Create timestep embedding
+        device = self.net[0].weight.device
+        t = torch.tensor(t, device=device).view(-1, 1)
+        t_one_hot = F.one_hot(t, self.T+1).float()
+        t_embed = t_one_hot.flip(1).cumsum(dim=1).flip(1)
+        params = self.net(t_embed).squeeze(1)
+        # params = params * at.view(-1, 1)
+        s = params[:, :self.im_sz]
+        u, v = params[:, self.im_sz:].chunk(2, dim=-1)
+        return (u.view(t.shape[0], self.im_sz, self.rank), 
+                v.view(t.shape[0], self.rank, self.im_sz),
+                s)
+
+
+class FactorizedLinearLayer(nn.Module):
+    def __init__(self):
+        super().__init__()
+        
+    def forward(self, x, u, v, s):
+        # Flatten spatial dimensions
+        flat_x = x.reshape(x.shape[0], -1)
+        
+        # Apply factorized transformation: UVx
+        vx = torch.einsum("b t d, b d -> b t", v, flat_x)
+        uvx = torch.einsum("b d t, b t -> b d", u, vx)
+        # Skip connection
+        transformed = uvx + s * flat_x
+        
+        # Restore original shape
+        return transformed.view_as(x)
+
+
+class FactorizedLinearNet(nn.Module):
+    def __init__(self, conf, rank=None, im_sz=None):
+        super().__init__()
+        self.conf = conf
+        rank = rank or conf.A_rank
+        im_sz = im_sz or conf.im_shape[-1] * conf.im_shape[-2]
+        self.linear_layer = FactorizedLinearLayer()
+        self.t_net = TimeMLPBlock(conf.T+1, 
+                                  im_sz,
+                                  rank,
+                                  conf.mlp_hidden_dim)
+        
+    def forward(self, gx_t, t, at):
+        u, v, s = self.t_net(t, at)
+        g_hat_x0 = self.linear_layer(gx_t, u, v, s)
+        return g_hat_x0
+
+
+class LinearUnet(nn.Module):
+    def __init__(self, conf):
+        super().__init__()
+
+        self.down_blocks = nn.ModuleList()
+        self.up_blocks = nn.ModuleList()
+        self.linear_layers = nn.ModuleList()
+
+        chans = conf.im_shape[-3]
+        ranks = [conf.A_rank * (2 ** i) for i in range(conf.n_levels)]
+        im_szs = [int(conf.im_shape[-1]**2 * (4 ** (-i))) for i in range(conf.n_levels)]
+        
+        for rank, im_sz in zip(ranks, im_szs):
+            print(rank, im_sz)
+            self.down_blocks.append(
+                nn.Conv2d(chans, chans, kernel_size=6, stride=2, padding=2, bias=False))
+            self.linear_layers.append(
+                FactorizedLinearNet(conf, rank, im_sz))
+            self.up_blocks.append(
+                nn.ConvTranspose2d(chans, chans, kernel_size=2, stride=2, output_padding=0, bias=False))
+            
+    def forward(self, x, t, at):
+        block_results_down, block_results_up = [x], []
+        for downblock in self.down_blocks:
+            x = downblock(x)
+            block_results_down.append(x)
+        for block_result, linear_layer in zip(block_results_down, self.linear_layers):
+            block_results_up.append(linear_layer(block_result, t, at))
+        x = block_results_up[-1]
+        for block_result, upblock in zip(reversed(block_results_up[:-1]), self.up_blocks):
+            x = upblock(x) + block_result
+        return x
+            

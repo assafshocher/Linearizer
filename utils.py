@@ -210,3 +210,18 @@ def save_visuals(results, frames, g_inv, dir, epoch=None):
     create_gif_from_frames(grid_frames_concat, concat_gif_path, duration=100)
     
 
+def sample_timesteps(a, num_samples):
+    # Calculate differences between consecutive a[t] values
+    differences = (a[1:] - a[:-1]).abs()
+    
+    # Normalize differences to get probabilities
+    probabilities = differences / differences.sum()
+    
+    # Create a tensor of possible timesteps
+    timesteps = torch.arange(1, len(a))
+    
+    # Sample timesteps according to the probabilities
+    sampled_timesteps = torch.multinomial(probabilities, num_samples, replacement=True)
+    
+    # Return the sampled timesteps
+    return timesteps[sampled_timesteps]

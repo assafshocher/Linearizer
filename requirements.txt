@@ -1,6 +1,0 @@
-wandb
-matplotlib
-# Or more simply
---extra-index-url https://download.pytorch.org/whl/cu122
-torch
-torchvision

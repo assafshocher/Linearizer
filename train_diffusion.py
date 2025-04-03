@@ -14,8 +14,8 @@ def main():
     parser.add_argument("--device", type=str, default="cuda:0",
                         help="Device to use, e.g., 'cuda:0' or 'cpu'.")
     parser.add_argument("--n_epochs", type=int, default=40, help="Number of training epochs.")
-    parser.add_argument("--batch_size", type=int, default=64, help="Training batch size.")
-    parser.add_argument("--val_batch_size", type=int, default=256, help="Validation batch size.")
+    parser.add_argument("--batch_size", type=int, default=512, help="Training batch size.")
+    parser.add_argument("--val_batch_size", type=int, default=512, help="Validation batch size.")
     parser.add_argument("--log_freq", type=int, default=10, help="Log frequency (in steps).")
     parser.add_argument("--val_freq", type=int, default=1, help="Validation frequency (in epochs).")
     parser.add_argument("--save_val_ckpt", action="store_true", default=False,
@@ -46,13 +46,24 @@ def main():
     parser.add_argument("--im_shape", type=int, nargs=3, default=[1, 64, 64],
                         help="Image shape as C H W for the model (target size).")
     
+    # Linear transformation arguments
+    parser.add_argument("--A_rank", type=int, default=8, 
+                        help="Base rank for factorized linear transformation.")
+    parser.add_argument("--n_levels", type=int, default=4, 
+                        help="Number of resolution levels. Use 1 for factorized, >1 for UNet-like approach")
+    parser.add_argument("--mlp_hidden_dim", type=int, default=512, 
+                        help="Hidden dimension for the MLP that generates transformation parameters")
+    
     # Diffusion process arguments.
     parser.add_argument("--T", type=int, default=1000, help="Number of timesteps for the diffusion process.")
-    parser.add_argument("--flow_type", type=str, default="linear", help=".")
+    parser.add_argument("--flow_type", type=str, default="cosine", 
+                        choices=["linear", "sqrt", "sqr", "cosine"],
+                        help="Noise schedule type for the diffusion process.")
     parser.add_argument("--sample_iterative", action="store_true", default=False,
                         help="Sample iteratively instead of one-step.")
+    parser.add_argument("--detach_noising", action="store_true", default=False,
+                        help="Detach g(xt) during noising.")
     parser.add_argument("--wandb", type=bool, default=False)
-    parser.add_argument("--A_rank", type=int, default=128, help="Maximum rank of A.")
     # others
     parser.add_argument("--load_latest", action="store_true", default=False,
                         help="If set, load the latest checkpoint for this experiment.")
