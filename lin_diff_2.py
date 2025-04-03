@@ -24,7 +24,7 @@ class LinearDiffusion(nn.Module):
         self.g = g
             
         # Initialize the linear UNet model directly as self.A
-        self.A = LinearUnet(conf)
+        self.A = FactorizedLinearNet(conf)
 
         if conf.flow_type is not None:
             self.calc_and_update_p_q_sigma(conf.T, conf.flow_type)

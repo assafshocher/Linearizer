@@ -47,7 +47,7 @@ def main():
                         help="Image shape as C H W for the model (target size).")
     
     # Linear transformation arguments
-    parser.add_argument("--A_rank", type=int, default=8, 
+    parser.add_argument("--A_rank", type=int, default=32, 
                         help="Base rank for factorized linear transformation.")
     parser.add_argument("--n_levels", type=int, default=4, 
                         help="Number of resolution levels. Use 1 for factorized, >1 for UNet-like approach")
