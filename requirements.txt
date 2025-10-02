@@ -1,0 +1,8 @@
+torch>=2.0.0
+torchvision>=0.15.0
+torchaudio>=2.0.0
+matplotlib>=3.5.0
+numpy>=1.21.0
+pillow>=8.3.0
+tqdm>=4.62.0
+piq>=0.7.0
