@@ -5,7 +5,8 @@
 ![Example](../figs/sytle_interpolation_example.png)
 
 
-This application implements neural style transfer using invertible networks and linear kernels. It learns to map a single input image to multiple artistic styles through linearized transformations in latent space.
+This application performs neural style-transfer interpolation using our Linearizer. It distills multiple styles from a pretrained style-transfer network into a set of linear operators defined over a shared, invertible latent space. For details on the interpolation procedure, please see our paper.
+
 
 ### Supported Styles
 
