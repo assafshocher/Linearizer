@@ -44,12 +44,7 @@ linearizer/
    conda activate linearizer
    ```
 
-2. **Install PyTorch with CUDA**:
-   ```bash
-   pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
-   ```
-
-3. **Install dependencies**:
+2. **Install dependencies**:
    ```bash
    pip install -r requirements.txt
    ```
