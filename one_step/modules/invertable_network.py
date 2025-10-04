@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 
-from linearizer.linearizer import G
+from linearizer import G
 
 
 # ---------- Small helpers ----------
@@ -230,7 +230,7 @@ class InverseUnet(G):
         elif kwargs['mode'] == 'gx':
             return self.g(x, torch.ones(x.shape[0], device=x.device))
         else:
-            raise NotImplementedError(f'No such mode exists: {kwargs['mode']}')
+            raise NotImplementedError(f'No such mode exists: {kwargs["mode"]}')
 
     def inverse(self, x, **kwargs):
         if kwargs['mode'] == 'gy':
@@ -238,4 +238,4 @@ class InverseUnet(G):
         elif kwargs['mode'] == 'gx':
             return self.g.inverse(x, torch.ones(x.shape[0], device=x.device))
         else:
-            raise NotImplementedError(f'No such mode exists: {kwargs['mode']}')
+            raise NotImplementedError(f'No such mode exists: {kwargs["mode"]}')

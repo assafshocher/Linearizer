@@ -1,18 +1,26 @@
-# Linearizer Project
-
+# Who Said Neural Networks Aren't Linear? The Linearizer Framework
+This repository provides the code implementation for the paper [“Who Said Neural Networks Aren’t Linear?”]()
+, which introduces the Linearizer Framework.
 ## Overview
 
 ![Linearizer Architecture](figs/the_linearizer.png)
 
-Neural networks are famously nonlinear, but linearity is defined relative to vector spaces f:X→Y. This project introduces **Linearizers**—architectures that sandwich a linear operator A between two invertible neural networks: f(x) = g⁻¹ᵧ(Agₓ(x)).
+Neural networks are famously **nonlinear**, but linearity is defined relative to vector spaces \(f: X → Y\).
+This project introduces **Linearizers** - architectures that sandwich a linear operator \(A\) between two **invertible**
+neural networks:
+  
+f(x) = g⁻¹ᵧ(Agₓ(x)).
 
-This framework makes linear algebra tools (SVD, pseudo-inverse, projections) applicable to nonlinear mappings, enabling:
+This framework lets classic linear-algebra tools like **SVD**, **pseudoinverse**, and **projections**, operate on
+ nonlinear mappings.
 
-- **One-Step Generation**: Collapse diffusion model sampling from hundreds of steps to one
-- **Style Transfer**: Modular artistic style transfer using linear transformations
-3. IGN - TODO 
+**Applications enabled by the framework and showed in the paper:**
+- **One-Step Generation:** Reduce diffusion sampling from hundreds of steps to a single linearized step.
+- **Style Transfer Interpolations:** Modular, controllable style transfer interpolations via linear 
+transformations in the latent linear space.
+- **IGN:** *Coming soon / TODO.*
 
-We provide, in this repository, for all of these 3 applications full implementations.
+We provide complete, runnable implementations for the listed applications in this repository.
 
 
 ## Project Structure
@@ -30,6 +38,7 @@ linearizer/
 │   ├── utils/         # Visualization utilities
 │   ├── train_style_transfer.py
 │   └── style_intrepolations.py
+├── ign/               # Coming Soon
 └── common/           # Shared components
     └── song__unet.py # UNet architecture
 ```
@@ -39,13 +48,13 @@ linearizer/
 ### Python Environment
 
 1. **Create conda environment**:
-   ```bash
+   ```
    conda create -n linearizer python=3.9
    conda activate linearizer
    ```
 
 2. **Install dependencies**:
-   ```bash
+   ```
    pip install -r requirements.txt
    ```
 

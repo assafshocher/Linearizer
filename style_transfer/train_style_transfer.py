@@ -4,11 +4,11 @@ import torch
 import argparse
 from datetime import datetime
 
-from linearizer.common.song__unet import creat_song_unet
-from linearizer.style_transfer.modules.invertable_network import InverseUnet
-from linearizer.style_transfer.modules.linear_network import LinearKernel
-from linearizer.style_transfer.modules.style_linearizer import StyleLinearizer
-from linearizer.style_transfer.utils import plot_data, plot_transitions
+from common.song__unet import creat_song_unet
+from style_transfer.modules.invertable_network import InverseUnet
+from style_transfer.modules.linear_network import LinearKernel
+from style_transfer.modules.style_linearizer import StyleLinearizer
+from style_transfer.utils import plot_data, plot_transitions
 
 
 def load_data(path_to_images):

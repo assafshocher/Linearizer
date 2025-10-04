@@ -1,6 +1,6 @@
-from linearizer.common.song__unet import creat_song_unet
-from linearizer.one_step.modules.invertable_network import InverseUnet
-from linearizer.one_step.modules.linear_network import TimeDependentLoRALinearLayer
+from common.song__unet import creat_song_unet
+from one_step.modules.invertable_network import InverseUnet
+from one_step.modules.linear_network import TimeDependentLoRALinearLayer
 
 
 def get_linear_network(linear_module, in_ch=1, linear_lora_features=128, t_size=128, img_size=32):

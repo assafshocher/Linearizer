@@ -2,37 +2,52 @@
 
 ## Overview
 
-This application implements fast generative modeling using flow matching with linearized transformations. It enables both one-step and multi-step generation, along with inversion capabilities which we demonstrate though interpolation in the latent space.
+This application implements fast generative modeling using flow matching with linearized transformations made possible
+by our **Linearezer framework**. It enables both one-step and multi-step generation,
+along with unique inversion capabilities which we demonstrate though interpolation in the latent space.
 
 ## Training a Model
 
+### Pre-trained Checkpoints 
+Pre-trained checkpoints for **MNIST** and **CelebA** are available here:
+- [Google Drive](https://drive.google.com/drive/folders/1gk3y8jv7Yk9X1JH5cX4Fqz4b2c3JH5cX?usp=sharing)
+
+**How to use**
+1. Download the ZIP from the Drive link.
+2. Extract it to your desired directory.
+3. Each checkpoint folder includes the exact training arguments and model weights.
+
+**Folder structure**
+```
+├─ args.json
+└─ models_directory
+   └─ model.pth
+```
+
+
+- `args.json` — the arguments used to train the model.
+- `models_directory/model.pth` — the pre-trained weights.
+
+
 ### For MNIST Dataset
 
-```bash
+```
 python train_one_step.py mnist 
 ```
 
 ### For CelebA Dataset
 
-```bash
+```
 python train_one_step.py celeba 
 ```
-
-### Optional Training Parameters
-
-- `--batch_size`: Training batch size (default: 64 for MNIST, 32 for CelebA)
-- `--epc`: Number of training epochs (default: 200)
-- `--img_size`: Image resolution (32 for MNIST, 64 for CelebA)
-- `--steps`: Number of sampling steps (default: 100)
-- `--sampling_method`: Sampling method ('euler' or 'rk')
-- `--save_folder`: Output directory for models and artifacts
 
 ### Training output
 The training will output:
 1. Artifacts of samples across the training process of one step and multiple steps each 10 epochs.
-You can change the code if you want output less/more frquenctly.
-2. The model '.pth' state dict
-3. A json containing the arguments used for the training
+You can change the code if you want output less/more frequently.
+2. A json containing the arguments used for the training
+3. A folder 'models' and the models '{epoch_num}.pth' state dicts
+
 
 ## Testing and Inference
 
@@ -40,8 +55,8 @@ After training, use the test script to generate samples and perform inversion in
 
 
 
-```bash
-python test_one_step.py --model_path /path/to/you/model.pth
+```
+python test_one_step.py --model_path /path/to/mdoels/model.pth
 ```
  Note: the script automatically scan the folder structure and load the arguments json file.
 

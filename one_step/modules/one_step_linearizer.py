@@ -1,7 +1,7 @@
-from typing import override
+from typing_extensions import override
 
-from linearizer.linearizer import Linearizer, G
-from linearizer.one_step.modules.linear_network import OneStepLinearModule
+from linearizer import Linearizer, G
+from one_step.modules.linear_network import OneStepLinearModule
 
 
 class OneStepLinearizer(Linearizer):

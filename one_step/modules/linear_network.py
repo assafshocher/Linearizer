@@ -4,7 +4,7 @@ import torch
 import math
 import torch.nn as nn
 
-from linearizer.linearizer import LinearModule
+from linearizer import LinearModule
 
 
 class SinusoidalPosEmb(nn.Module):

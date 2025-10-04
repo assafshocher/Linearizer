@@ -1,9 +1,8 @@
-# Style Transfer Application
-
-## Overview
+# Style Transfer Interpolation Application
 
 ![Example](../figs/sytle_interpolation_example.png)
 
+## Overview
 
 This application performs neural style-transfer interpolation using our Linearizer. It distills multiple styles from a pretrained style-transfer network into a set of linear operators defined over a shared, invertible latent space. For details on the interpolation procedure, please see our paper.
 
@@ -18,12 +17,13 @@ The system learns to generate these 4 artistic styles:
 
 
 ## Data Preparation
+You can either use your own image, or use the images used in the paper.
 
 ### Run on Our Sample Images
 
 Use one of the provided sample images in the `our_images/` directory:
 
-```bash
+```
 python prepare_new_image.py \
     --image_path our_images/sample_image.jpg \
     --height 256 \
@@ -36,28 +36,41 @@ This will:
 3. Generate 4 styled versions: mosaic, candy, rain_princess, udnie
 4. Save all images in the current directory
 
+For example
+```
+--image_path your/path/to/our_images/david_256x256.png
+-- height 256
+-- width 256
+```
+
 ### Run on Your Own Image
 
 Upload your own image and generate styled versions:
 
-```bash
+```
 python prepare_new_image.py \
     --image_path /path/to/your/image.jpg \
     --height 256 \
     --width 256
 ```
 
-This will generate the images needed for next step(training)
+This will generate the images needed for next step(training).
 
 ## Training a Model
 Now you are ready for training !
 
 ### Run Training
 
-```bash
+```
 python train_style_transfer.py \
     --path_to_images your_image_folder \
     --img_resolution 256
+```
+
+Taking the example from the data generation step
+```
+--path_to_images your/path/to/our_images/david_256x256
+--img_resolution 256
 ```
 
 
@@ -80,7 +93,7 @@ The training will:
 
 After training, generate smooth interpolations between different styles:
 
-```bash
+```
 python style_intrepolations.py \
     --model_path outputs/your_model/model.pth \
     --image_path path/to/input/image.png \

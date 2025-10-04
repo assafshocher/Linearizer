@@ -41,9 +41,8 @@ def get_celeba_data_loaders(train_bs, val_bs, target_size, use_ddp=False, world_
         transforms.CenterCrop(target_size),
         transforms.ToTensor(),
     ])
-    train_dataset = datasets.CelebA(root='/mnt/efs0/nimrod/lin/', split='train', download=False,
-                                    transform=train_transform)
-    val_dataset = datasets.CelebA(root='/mnt/efs0/nimrod/lin/', split='valid', download=True, transform=test_transform)
+    train_dataset = datasets.CelebA(root='./data', split='train', download=True, transform=train_transform)
+    val_dataset = datasets.CelebA(root='./data', split='valid', download=True, transform=test_transform)
 
     if use_ddp:
         train_sampler = DistributedSampler(train_dataset, num_replicas=world_size, rank=rank, shuffle=True)

@@ -7,11 +7,11 @@ from datetime import datetime
 
 sys.path.append(os.getcwd())
 
-from linearizer.one_step.data.data_utils import get_data_loaders
-from linearizer.one_step.modules.one_step_linearizer import OneStepLinearizer
-from linearizer.one_step.utils.loss_utils import calculate_lpips
-from linearizer.one_step.utils.model_utils import get_linear_network, get_g
-from linearizer.one_step.utils.sampling_utils import sample_and_save
+from one_step.data.data_utils import get_data_loaders
+from one_step.modules.one_step_linearizer import OneStepLinearizer
+from one_step.utils.loss_utils import calculate_lpips
+from one_step.utils.model_utils import get_linear_network, get_g
+from one_step.utils.sampling_utils import sample_and_save
 from configs.celeba import get_celeba_parser
 from configs.mnist import get_mnist_parser
 
@@ -28,8 +28,8 @@ def parse_args():
         # Remove dataset from args to avoid conflict
         sys.argv = [sys.argv[0]] + sys.argv[2:]
     else:
-        raise NotImplementedError(f'No argument! insert dataset name as first argument,'
-                                  f' and the the rest of the arguments')
+        raise NotImplementedError(f'No argument! insert dataset name as first argument [mnist, celeba],'
+                                  f' and then the rest of the arguments')
 
     return parser.parse_args()
 

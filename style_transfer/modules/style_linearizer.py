@@ -1,6 +1,6 @@
-from typing import override
+from typing_extensions import override
 
-from linearizer.linearizer import Linearizer, G
+from linearizer import Linearizer, G
 
 
 class StyleLinearizer(Linearizer):
