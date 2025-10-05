@@ -24,10 +24,7 @@ You can either use your own image, or use the images used in the paper.
 Use one of the provided sample images in the `our_images/` directory:
 
 ```
-python prepare_new_image.py \
-    --image_path our_images/sample_image.jpg \
-    --height 256 \
-    --width 256
+python prepare_new_image.py --image_path our_images/sample_image.jpg --height 256 --width 256
 ```
 
 This will:
@@ -38,9 +35,7 @@ This will:
 
 For example
 ```
---image_path your/path/to/our_images/david_256x256.png
--- height 256
--- width 256
+python prepare_new_image.py --image_path your/path/to/our_images/david_256x256.png -- height 256 -- width 256
 ```
 
 ### Run on Your Own Image
@@ -48,10 +43,7 @@ For example
 Upload your own image and generate styled versions:
 
 ```
-python prepare_new_image.py \
-    --image_path /path/to/your/image.jpg \
-    --height 256 \
-    --width 256
+python prepare_new_image.py --image_path /path/to/your/image.jpg --height 256 --width 256
 ```
 
 This will generate the images needed for next step(training).
@@ -62,9 +54,7 @@ Now you are ready for training !
 ### Run Training
 
 ```
-python train_style_transfer.py \
-    --path_to_images your_image_folder \
-    --img_resolution 256
+python train_style_transfer.py --path_to_images your_image_folder --img_resolution 256
 ```
 
 Taking the example from the data generation step
@@ -94,11 +84,7 @@ The training will:
 After training, generate smooth interpolations between different styles:
 
 ```
-python style_intrepolations.py \
-    --model_path outputs/your_model/model.pth \
-    --image_path path/to/input/image.png \
-    --img_size 256 \
-    --output_dir interpolation_results
+python style_intrepolations.py --model_path outputs/your_model/model.pth --image_path path/to/input/image.png --img_size 256 --output_dir interpolation_results
 ```
 
 ### Interpolation Parameters

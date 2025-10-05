@@ -5,6 +5,7 @@ import os
 import sys
 from datetime import datetime
 
+sys.path.append('..')
 sys.path.append(os.getcwd())
 
 from one_step.data.data_utils import get_data_loaders
@@ -243,7 +244,7 @@ def main():
     print("Starting Flow Matching training...")
     save_folder = f'{args.save_folder}/{args.dataset}/{datetime.now().strftime("%m_%d_%H_%M_%S")}'
     os.makedirs(save_folder, exist_ok=True)
-    
+
     # Save args
     with open(f'{save_folder}/args.json', 'w') as f:
         json.dump(vars(args), f, indent=2)

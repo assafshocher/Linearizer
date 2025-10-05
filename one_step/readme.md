@@ -8,7 +8,7 @@ along with unique inversion capabilities which we demonstrate though interpolati
 
 ## Training a Model
 
-### Pre-trained Checkpoints 
+### Pre-trained Checkpoints - Coming Soon
 Pre-trained checkpoints for **MNIST** and **CelebA** are available here:
 - [Google Drive](https://drive.google.com/drive/folders/1gk3y8jv7Yk9X1JH5cX4Fqz4b2c3JH5cX?usp=sharing)
 
@@ -25,8 +25,8 @@ Pre-trained checkpoints for **MNIST** and **CelebA** are available here:
 ```
 
 
-- `args.json` — the arguments used to train the model.
-- `models_directory/model.pth` — the pre-trained weights.
+- `args.json` - the arguments used to train the model.
+- `models_directory/model.pth` - the pre-trained weights.
 
 
 ### For MNIST Dataset
@@ -40,6 +40,30 @@ python train_one_step.py mnist
 ```
 python train_one_step.py celeba 
 ```
+
+#### Having trouble downloading CelebA? (gdown quota)
+
+If you get  
+`gdown.exceptions.FileURLRetrievalError: Too many users have viewed or downloaded this file recently`  
+you can bypass Google Drive by **pre-populating the dataset** and **skipping the auto-download**.
+
+**Option A - Manual download (recommended)**
+1. Download CelebA via your browser (project page or a mirror/Kaggle).
+2. Place files in this layout:
+```
+
+./data/celeba/
+├── img_align_celeba/            # images (000001.jpg, …)
+├── list_attr_celeba.txt
+├── list_eval_partition.txt
+├── list_bbox_celeba.txt
+└── list_landmarks_align_celeba.txt
+
+````
+3. Run again. The loader will find the files and skip downloading. If you edit code locally, ensure:
+```python
+datasets.CelebA(root="./data", split="train", download=False, transform=...)
+````
 
 ### Training output
 The training will output:

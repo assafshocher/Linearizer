@@ -3,6 +3,8 @@ import torch.optim as optim
 import torch
 import argparse
 from datetime import datetime
+import sys
+sys.path.append('..')
 
 from common.song__unet import creat_song_unet
 from style_transfer.modules.invertable_network import InverseUnet

@@ -4,6 +4,9 @@ from PIL import Image
 import torchvision.transforms as transforms
 import argparse
 import os
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import style_transfer
 
 
 def parse_args():
