@@ -9,7 +9,7 @@ CELEBA_CONFIG = {
     'epc': 201,
     'lr': 1e-4,
     'noise_level': 0.3,
-    'steps': 1000,
+    'steps': 100,
     'sampling_method': 'rk',
     'linear_module': 'TimeDependentLoRALinearLayer',
     'g': 'InverseUnet',
