@@ -8,9 +8,9 @@ along with unique inversion capabilities which we demonstrate though interpolati
 
 ## Training a Model
 
-### Pre-trained Checkpoints - Coming Soon
-Pre-trained checkpoints for **MNIST** and **CelebA** are available here:
-- [Google Drive](https://drive.google.com/drive/folders/1gk3y8jv7Yk9X1JH5cX4Fqz4b2c3JH5cX?usp=sharing)
+### Pre-trained Checkpoints 
+Pre-trained checkpoints for **MNIST** and **CelebA** (coming soon) are available here:
+[Google Drive](https://drive.google.com/drive/folders/1kKnfhvhFH7Tyhqb3UflSzWDB43i12ger?usp=sharing)
 
 **How to use**
 1. Download the ZIP from the Drive link.
@@ -20,13 +20,13 @@ Pre-trained checkpoints for **MNIST** and **CelebA** are available here:
 **Folder structure**
 ```
 ├─ args.json
-└─ models_directory
+└─ models
    └─ model.pth
 ```
 
 
 - `args.json` - the arguments used to train the model.
-- `models_directory/model.pth` - the pre-trained weights.
+- `models/model.pth` - the pre-trained weights.
 
 
 ### For MNIST Dataset
@@ -47,7 +47,7 @@ If you get
 `gdown.exceptions.FileURLRetrievalError: Too many users have viewed or downloaded this file recently`  
 you can bypass Google Drive by **pre-populating the dataset** and **skipping the auto-download**.
 
-**Option A - Manual download (recommended)**
+**Manual download**
 1. Download CelebA via your browser (project page or a mirror/Kaggle).
 2. Place files in this layout:
 ```
@@ -82,7 +82,7 @@ After training, use the test script to generate samples and perform inversion in
 ```
 python test_one_step.py --model_path /path/to/mdoels/model.pth
 ```
- Note: the script automatically scan the folder structure and load the arguments json file.
+ **Note: the script automatically scan the folder structure and load the arguments json file.**
 
 
 ### What the Test Script Does
