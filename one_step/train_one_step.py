@@ -256,7 +256,8 @@ def main():
         steps=args.steps,
         sampling_method=args.sampling_method,
         save_folder=save_folder,
-        img_size=args.img_size
+        img_size=args.img_size,
+        num_of_ch=args.in_ch,
     )
     print("Training completed!")
 
