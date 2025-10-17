@@ -9,10 +9,10 @@ from piq import LPIPS
 
 sys.path.append(os.getcwd())
 
-from linearizer.one_step.data.data_utils import get_data_loaders
-from linearizer.one_step.modules.one_step_linearizer import OneStepLinearizer
-from linearizer.one_step.utils.model_utils import get_linear_network, get_g
-from linearizer.one_step.train_one_step import FlowMatcher
+from one_step.data.data_utils import get_data_loaders
+from one_step.modules.one_step_linearizer import OneStepLinearizer
+from one_step.utils.model_utils import get_linear_network, get_g
+from one_step.train_one_step import FlowMatcher
 
 
 def load_model(model_path, device='cuda'):
