@@ -1,4 +1,3 @@
-import time
 import json
 import torch
 import os
@@ -197,7 +196,6 @@ def train_flow_matching(linearizer, dataloader, epochs=10, lr=1e-4, noise_level=
             loss.backward()
             optimizer.step()
             total_loss += loss.item()
-
             if batch_idx % 100 == 0:
                 print(f'Epoch {epoch + 1}/{epochs}, Batch {batch_idx}, Loss: {loss.item():.4f}')
 
@@ -211,11 +209,11 @@ def train_flow_matching(linearizer, dataloader, epochs=10, lr=1e-4, noise_level=
                             epoch=epoch, num_of_ch=num_of_ch, sampling_method=sampling_method,
                             img_size=img_size, save_dir=artifacts_save_path)
             # Save model
-
             torch.save(
-                fm.linearizer.state_dict(),
-                f'{models_save_path}/{epoch}.pth')
-            print(f"Model saved to {models_save_path}/{epoch}.pth")
+                fm.linearizer,
+                f'{models_save_path}/lin_{epoch}.pth')
+            print(f"Model saved to {models_save_path}/lin_{epoch}.pth")
+
 
 
 def main():
@@ -237,7 +235,7 @@ def main():
                                         in_ch=args.in_ch,
                                         img_size=args.img_size)
 
-    g = get_g(args.g, args.in_ch, args.out_ch, args.img_size)
+    g = get_g(args.g, args.num_of_layers, args.out_ch, args.img_size)
     linearizer = OneStepLinearizer(gx=g, linear_network=linear_network)
 
     # --- start training --- #
