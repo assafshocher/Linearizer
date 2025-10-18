@@ -10,34 +10,20 @@ from piq import LPIPS
 sys.path.append(os.getcwd())
 
 from one_step.data.data_utils import get_data_loaders
-from one_step.modules.one_step_linearizer import OneStepLinearizer
-from one_step.utils.model_utils import get_linear_network, get_g
 from one_step.train_one_step import FlowMatcher
 
 
 def load_model(model_path, device='cuda'):
     """Load trained linearizer model using saved args"""
-    # Load args from the same directory
-    model_dir = os.path.dirname(os.path.dirname(model_path))  # Go up to run folder
+    model_dir = os.path.dirname(os.path.dirname(model_path))
     args_path = os.path.join(model_dir, 'args.json')
 
     with open(args_path, 'r') as f:
         args = json.load(f)
 
-    # Reconstruct the linearizer architecture using saved args
-    linear_network = get_linear_network(args['linear_module'],
-                                        linear_lora_features=args['linear_lora_features'],
-                                        in_ch=args['in_ch'],
-                                        img_size=args['img_size'])
-
-    g = get_g(args['g'], args['in_ch'], args['out_ch'], args['img_size'])
-    linearizer = OneStepLinearizer(gx=g, linear_network=linear_network)
-
-    # Load state dict
-    linearizer.load_state_dict(torch.load(model_path, map_location=device, weights_only=False))
+    linearizer = torch.load(model_path, map_location=device, weights_only=False)
     linearizer = linearizer.to(device)
 
-    # Create FlowMatcher
     fm = FlowMatcher(linearizer)
     return fm, args
 
