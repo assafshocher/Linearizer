@@ -1,5 +1,5 @@
 # Who Said Neural Networks Aren't Linear? The Linearizer Framework
-This repository provides the code implementation for the paper [“Who Said Neural Networks Aren’t Linear?”]()
+This repository provides the code implementation for the paper [“Who Said Neural Networks Aren’t Linear?”](https://arxiv.org/abs/2510.08570)
 , which introduces the Linearizer Framework.
 ## Overview
 
