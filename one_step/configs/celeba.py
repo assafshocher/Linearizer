@@ -13,7 +13,7 @@ CELEBA_CONFIG = {
     'sampling_method': 'rk',
     'linear_module': 'TimeDependentLoRALinearLayer',
     'g': 'InverseUnet',
-    'num_of_layers': 3,
+    'num_of_layers': 2,
     'in_ch': 3,
     'out_ch': 3,
     'linear_lora_features': 8,
