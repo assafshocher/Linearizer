@@ -9,7 +9,7 @@ along with unique inversion capabilities which we demonstrate though interpolati
 ## Training a Model
 
 ### Pre-trained Checkpoints 
-Pre-trained checkpoints for **MNIST** and **CelebA** (coming soon) are available here:
+Pre-trained checkpoints for **MNIST** and **CelebA**  are available here:
 [Google Drive](https://drive.google.com/drive/folders/1kKnfhvhFH7Tyhqb3UflSzWDB43i12ger?usp=sharing)
 
 **How to use**
